@@ -18,5 +18,5 @@ This work is protected by Copyright. Please refer to the [Copyright File](COPYRI
 
 ## License
 
-REDHAWK Core is licensed under a combination of the GNU Lesser General Public License (LGPL) and the Apache (v.2.0)  License.
+REDHAWK Core GPP is licensed under the GNU Lesser General Public License (LGPL).
 
