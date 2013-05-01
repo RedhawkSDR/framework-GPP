@@ -356,7 +356,7 @@ class GPP_base(CF__POA.AggregateExecutableDevice,ExecutableDevice, AggregateDevi
                                           type_="double",
                                           defvalue=1.0,
                                           mode="readwrite",
-                                          action="le",
+                                          action="gt",
                                           kinds=("execparam","allocation"),
                                           description="""The performance ratio of this machine, relative to the benchmark machine.""" 
                                           )       

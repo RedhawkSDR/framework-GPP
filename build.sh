@@ -25,9 +25,9 @@ if [ "$1" == "rpm" ]; then
     if [ -e GPP.spec ]; then
         mydir=`dirname $0`
         tmpdir=`mktemp -d`
-        cp -r ${mydir} ${tmpdir}/GPP-__VERSION__
-        tar czf ${tmpdir}/GPP-__VERSION__.tar.gz --exclude=".svn" -C ${tmpdir} GPP-__VERSION__
-        rpmbuild -ta ${tmpdir}/GPP-__VERSION__.tar.gz
+        cp -r ${mydir} ${tmpdir}/GPP-1.8.4
+        tar czf ${tmpdir}/GPP-1.8.4.tar.gz --exclude=".svn" -C ${tmpdir} GPP-1.8.4
+        rpmbuild -ta ${tmpdir}/GPP-1.8.4.tar.gz
         rm -rf $tmpdir
     else
         echo "Missing RPM spec file in" `pwd`

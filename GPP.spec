@@ -24,45 +24,39 @@
 %define _prefix %{_sdrroot}
 Prefix: %{_prefix}
 
-# Point install paths to locations within our target SDR root
-%define _sysconfdir    %{_prefix}/etc
-%define _localstatedir %{_prefix}/var
-%define _mandir        %{_prefix}/man
-%define _infodir       %{_prefix}/info
+Name:           GPP
+Version:        1.8.4
+Release:        1%{?dist}
+Summary:        Redhawk GPP
 
-Name:		GPP
-Version:	__VERSION__
-Release:	1
-Summary:	Redhawk GPP
+Group:          Applications/Engineering
+License:        LGPLv3+
+URL:            http://redhawksdr.org/
+Source:         %{name}-%{version}.tar.gz
 
-Group:		Applications/Engineering
-License:	LGPLv3+
-URL:		http://redhawksdr.org/
-Source:		%{name}-%{version}.tar.gz
+BuildArch:      noarch
+BuildRoot:      %{_tmppath}/%{name}-root
 
-BuildArch:	noarch
-BuildRoot:	%{_tmppath}/%{name}-root
-
-Requires: redhawk >= 1.8
-BuildRequires: redhawk >= 1.8
-BuildRequires: autoconf automake libtool
+Requires:       redhawk >= 1.8.3
+BuildRequires:  redhawk >= 1.8.3
+BuildRequires:  autoconf automake libtool
 
 # Python requirements
-Requires: python omniORBpy
-BuildRequires: libomniORBpy3-devel
-BuildRequires: python-devel >= 2.3
+Requires:       python omniORBpy
+BuildRequires:  libomniORBpy3-devel
+BuildRequires:  python-devel >= 2.3
 
 # Temporary to aide with upgrading from 1.7.X
-Obsoletes: redhawk-GPP
+Obsoletes:      redhawk-GPP
 
 %package profile
-Summary:  Basic GPP profile
-Group:    Redhawk/Framework
-Prereq: redhawk >= 1.8
-Prereq: %{name} = %{version}-%{release}
+Summary:        Basic GPP profile
+Group:          Redhawk/Framework
+Prereq:         redhawk >= 1.8.3
+Prereq:         %{name} = %{version}-%{release}
 
 # Temporary to aide with upgrading from 1.7.X
-Obsoletes: redhawk-GPP-profile
+Obsoletes:      redhawk-GPP-profile
 
 %description
 A device representing a general purpose processor
@@ -124,7 +118,12 @@ echo "Configuring the Node..."
     --sdrroot=%{_prefix} \
     --inplace
 
+
 %changelog
+* Fri Mar 29 2012 1.8.4-1
+- Remove unnecessary defines
+- Correct required version of Redhawk; needs at least 1.8.3 due to eventing
+
 * Tue Mar 12 2012 1.8.3-4
 - Update licensing information
 - Add URL for website

@@ -157,7 +157,7 @@ with this program.  If not, see http://www.gnu.org/licenses/.
     <value>1.0</value>
     <kind kindtype="execparam"/>
     <kind kindtype="allocation"/>
-    <action type="le"/>
+    <action type="gt"/>
   </simple>
   <simple id="DCE:6c000787-6fea-4765-8686-2e051e6c24b0" mode="readonly" name="loadFree" type="double">
     <description>Equal to loadCapacity</description>

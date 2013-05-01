@@ -762,6 +762,8 @@ class GPP(GPP_base):
 
         result = []
         for line in output[1:]:
+            if 'Permission denied' in line:
+                continue
             fields = line.split()
             filesystem = fields[0]
             mounted_on = fields[-1]
