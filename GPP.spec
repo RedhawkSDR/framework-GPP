@@ -26,7 +26,7 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        1.8.4
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Redhawk GPP
 
 Group:          Applications/Engineering
