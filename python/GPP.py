@@ -674,7 +674,7 @@ class GPP(GPP_base):
     memThresholdDecimal = property(fget=get_memThresholdDecimal)
 
     def get_memThresholdValue(self):
-        return (self.memTotal * self.memThresholdDecimal)
+        return int(self.memTotal * self.memThresholdDecimal)
     memThresholdValue = property(fget=get_memThresholdValue)
 
     def get_mcastNicThresholdDecimal(self):

@@ -25,8 +25,8 @@
 Prefix: %{_prefix}
 
 Name:           GPP
-Version:        1.8.4
-Release:        3%{?dist}
+Version:        1.9.0
+Release:        1%{?dist}
 Summary:        Redhawk GPP
 
 Group:          Applications/Engineering
@@ -37,26 +37,14 @@ Source:         %{name}-%{version}.tar.gz
 BuildArch:      noarch
 BuildRoot:      %{_tmppath}/%{name}-root
 
-Requires:       redhawk >= 1.8.3
-BuildRequires:  redhawk >= 1.8.3
-BuildRequires:  autoconf automake libtool
-
-# Python requirements
-Requires:       python omniORBpy
-BuildRequires:  libomniORBpy3-devel
-BuildRequires:  python-devel >= 2.3
-
-# Temporary to aide with upgrading from 1.7.X
-Obsoletes:      redhawk-GPP
+Requires:       redhawk >= 1.9
+BuildRequires:  redhawk-devel >= 1.9
 
 %package profile
 Summary:        Basic GPP profile
 Group:          Redhawk/Framework
-Prereq:         redhawk >= 1.8.3
+Prereq:         redhawk >= 1.9
 Prereq:         %{name} = %{version}-%{release}
-
-# Temporary to aide with upgrading from 1.7.X
-Obsoletes:      redhawk-GPP-profile
 
 %description
 A device representing a general purpose processor
@@ -120,6 +108,10 @@ echo "Configuring the Node..."
 
 
 %changelog
+* Fri May 24 2013 1.9.0-1
+- Remove obsoletes used to upgrade from 1.7.X to 1.8.X
+- Update dependencies
+
 * Fri Mar 29 2012 1.8.4-1
 - Remove unnecessary defines
 - Correct required version of Redhawk; needs at least 1.8.3 due to eventing
