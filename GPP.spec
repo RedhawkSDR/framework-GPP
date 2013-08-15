@@ -26,13 +26,14 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        1.9.0
-Release:        1%{?dist}
-Summary:        Redhawk GPP
+Release:        2%{?dist}
+Summary:        REDHAWK GPP
 
 Group:          Applications/Engineering
 License:        LGPLv3+
 URL:            http://redhawksdr.org/
 Source:         %{name}-%{version}.tar.gz
+Vendor:         REDHAWK
 
 BuildArch:      noarch
 BuildRoot:      %{_tmppath}/%{name}-root

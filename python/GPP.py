@@ -201,8 +201,8 @@ class GPP(GPP_base):
                 outputThread.setDaemon(True)
                 outputThread.start()
         finally:
-            self._popen_lock.release()
             os.read = reader.func
+            self._popen_lock.release()
 
         # TODO: SR:455
         # We need to detect failures to execute
