@@ -26,7 +26,7 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        1.9.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        REDHAWK GPP
 
 Group:          Applications/Engineering
