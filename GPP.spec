@@ -26,7 +26,7 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        1.9.0
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        REDHAWK GPP
 
 Group:          Applications/Engineering
@@ -49,6 +49,9 @@ Prereq:         %{name} = %{version}-%{release}
 
 %description
 A device representing a general purpose processor
+ * Commit: __REVISION__
+ * Source Date/Time: __DATETIME__
+
 
 %description profile
 Generates a GPP profile on the installation machine
