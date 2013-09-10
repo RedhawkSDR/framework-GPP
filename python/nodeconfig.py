@@ -69,15 +69,18 @@ class NodeConfig(object):
         self.props = {}
 
     def register(self):
-        self._log.debug("Registering...")
+        if not self.options.silent:
+            self._log.debug("Registering...")
         self._gather_system_information()
         self._createDeviceManagerProfile()
         self._updateGppProfile()
     
     def unregister(self):
-        self._log.debug("Unregistering...")
+        if not self.options.silent:
+            self._log.debug("Unregistering...")
         if os.path.isdir(self.nodedir):
-            self._log.debug("  Removing <" + self.nodedir + ">")
+            if not self.options.silent:
+                self._log.debug("  Removing <" + self.nodedir + ">")
             shutil.rmtree(self.nodedir)
          
     def _gather_system_information(self):
@@ -96,12 +99,13 @@ class NodeConfig(object):
         self._gather_diskrate_information()
         
         # Output some debug information
-        self._log.debug("System Information for: <" + self.hostname + ">")
-        self._log.debug("  %-30s %s", "Node", self.nodedir)
-        k = self.props.keys()
-        k.sort()
-        for n in k:
-            self._log.debug("  %-30s %s ", n, self.props[n])
+        if not self.options.silent:
+            self._log.debug("System Information for: <" + self.hostname + ">")
+            self._log.debug("  %-30s %s", "Node", self.nodedir)
+            k = self.props.keys()
+            k.sort()
+            for n in k:
+                self._log.debug("  %-30s %s ", n, self.props[n])
         
     def _gather_java_information(self):
         # Get some information about the Java version, this is a bit tricky since it is not
@@ -205,7 +209,8 @@ class NodeConfig(object):
         return float(ver[0:1]) + float(ver[2:3])*0.1 + float(ver[4:5])*0.000001
 
     def _gather_mcastnic_information(self):
-        self._log.debug("Checking nic capacity...")
+        if not self.options.silent:
+            self._log.debug("Checking nic capacity...")
         
         # If the multicast NIC isn't specified, attempt to locate using the default route 
         if not self.options.mcastnic:
@@ -216,12 +221,14 @@ class NodeConfig(object):
                     self.options.mcastnic = fields[7]
                     if self.options.mcastnic.find(".") != -1:
                         self.options.mcastnic = self.options.mcastnic.split(".")[0]
-                    self._log.info("Auto-detected %s as multicast nic", self.options.mcastnic)
+                    if not self.options.silent:
+                        self._log.info("Auto-detected %s as multicast nic", self.options.mcastnic)
                     break
             
         if not self.options.mcastnic:
-            self._log.warn("You must provide a multicast NIC port in order to have NIC capacity managment")
-            return
+            if not self.options.silent:
+                self._log.warn("You must provide a multicast NIC port in order to have NIC capacity managment")
+                return
         self.props["mcastnicInterface"] = self.options.mcastnic
         testInterface = self.options.mcastnic
 
@@ -232,22 +239,26 @@ class NodeConfig(object):
                 bondfile = open(bondpath, 'r')
                 bondintf = bondfile.readline(100)
                 testInterface = bondintf.strip()
-                self._log.debug("Ingress/egress will be calculated using the active slave interface '%s' of bonded interface '%s'" % (testInterface, self.options.mcastnic))
+                if not self.options.silent:
+                    self._log.debug("Ingress/egress will be calculated using the active slave interface '%s' of bonded interface '%s'" % (testInterface, self.options.mcastnic))
                 bondfile.close()
             except:
-                self._log.warn("Unable to read information for bonded multicast interface")
+                if not self.options.silent:
+                    self._log.warn("Unable to read information for bonded multicast interface")
                 return
         
         # Must be root to query the interface
         if os.getuid() != 0:
-            self._log.warn("You must run nodeconfig.py as root in order to get a calculated nic capacity for devices")
+            if not self.options.silent:
+                self._log.warn("You must run nodeconfig.py as root in order to get a calculated nic capacity for devices")
             self.props["mcastnicIngressTotal"] = 0
             self.props["mcastnicEgressTotal"] = 0
             return
         
         (exitstatus, ethtool_info) = commands.getstatusoutput("/sbin/ethtool " + testInterface)
         if exitstatus != 0:
-            self._log.debug("Invalid multicast NIC provided.")
+            if not self.options.silent:
+                self._log.debug("Invalid multicast NIC provided.")
             return
 
         speed = ''
@@ -267,10 +278,12 @@ class NodeConfig(object):
             link = True
         elif link == 'NO':
             link = False
-            self._log.warn("Multicast NIC not up.")
+            if not self.options.silent:
+                self._log.warn("Multicast NIC not up.")
         else:
             link = False
-            self._log.warn("Unable to determine if multicast NIC is up")
+            if not self.options.silent:
+                self._log.warn("Unable to determine if multicast NIC is up")
 
         # get speed
         speed = speed.rstrip('Mb/s')
@@ -282,7 +295,8 @@ class NodeConfig(object):
         self.props["mcastnicIngressTotal"] = speed
         self.props["mcastnicEgressTotal"] = speed
         if duplex != "Full":
-            self._log.debug("Interface is half-duplex.")
+            if not self.options.silent:
+                self._log.debug("Interface is half-duplex.")
             self.props["mcastnicIngressTotal"] = speed / 2
             self.props["mcastnicEgressTotal"] = speed / 2
         
@@ -290,7 +304,8 @@ class NodeConfig(object):
     
     def _gather_diskrate_information(self):
         if os.getuid() != 0:
-            self._log.debug("You must run dynamicnode.py as root in order to get a calculated disk rate for devices")
+            if not self.options.silent:
+                self._log.debug("You must run dynamicnode.py as root in order to get a calculated disk rate for devices")
             return
         
         # find the right disk
@@ -302,10 +317,12 @@ class NodeConfig(object):
             if dev in ("tmpfs",):
                 continue
             if not os.path.exists(dev):
-                self._log.debug("Skipping filesystem '%s' which does not appear to be a physical disk" % dev)
+                if not self.options.silent:
+                    self._log.debug("Skipping filesystem '%s' which does not appear to be a physical disk" % dev)
                 continue
             
-            self._log.debug("Checking disk rate for %s ...", dev)
+            if not self.options.silent:
+                self._log.debug("Checking disk rate for %s ...", dev)
             hdparminfo = commands.getoutput("/sbin/hdparm -t " + dev).splitlines()
             dataline = None
             for i in hdparminfo:
@@ -313,14 +330,16 @@ class NodeConfig(object):
                     dataline = i
                     break
             if dataline == None:
-                self._log.debug("problems running hdparm for disk rate test")
+                if not self.options.silent:
+                    self._log.debug("problems running hdparm for disk rate test")
                 return 0
     
             data = dataline.split()
             eidx = data.index('=')
             midx = data.index('MB/sec')
             if midx <= eidx:
-                self._log.debug("problems running hdparm for disk rate test")
+                if not self.options.silent:
+                    self._log.debug("problems running hdparm for disk rate test")
                 return 0
             rate = data[eidx+1]
             self.props['diskrateTotal'].append({"diskrateTotalDevice": dev, "diskrateTotal": rate})
@@ -359,7 +378,9 @@ class NodeConfig(object):
             if not os.path.isdir(self.nodedir):
                 os.makedirs(self.nodedir)
             else:
-                self._log.debug("Node directory already exists; skipping directory creation")
+                if not self.options.silent:
+                    self._log.debug("Node directory already exists; skipping directory creation")
+                pass
         except OSError:
             raise Exception, "Could not create device manager directory"
 
@@ -377,7 +398,8 @@ class NodeConfig(object):
         #####################
         # DeviceManager files
         #####################
-        self._log.debug("Creating DeviceManager profile <" + self.options.nodename + ">")
+        if not self.options.silent:
+            self._log.debug("Creating DeviceManager profile <" + self.options.nodename + ">")
         
         # set deviceconfiguration info
         _dcd = parsers.DCDParser.deviceconfiguration()
@@ -433,7 +455,8 @@ class NodeConfig(object):
         # GPP files
         #####################
         
-        self._log.debug("Creating GPP profile <" + self.gpp_path + ">")
+        if not self.options.silent:
+            self._log.debug("Creating GPP profile <" + self.gpp_path + ">")
             
         if not self.options.inplace:
             if not os.path.exists(self.gpp_path):
@@ -518,6 +541,8 @@ if __name__ == "__main__":
                       help="Specify the default mcastnic interfaces (i.e. 'eth1'); if none is given the route associated with default multicast is used")
     parser.add_option("--disableevents", dest="noevents", default=False, action="store_true",
                       help="Disable event channel registration")
+    parser.add_option("--silent", dest="silent", default=False, action="store_true",
+                      help="Suppress all logging except errors")
     parser.add_option("--clean", dest="clean", default=False, action="store_true",
                       help="clean up the previous configuration for this node first (delete entire node)")
     parser.add_option("-v", "--verbose", dest="verbose", default=False, action="store_true",
@@ -547,7 +572,8 @@ if __name__ == "__main__":
         if options.clean:
             dn.unregister()
         dn.register()
-        _log.info("GPP node registration is complete")
+        if not options.silent:
+            _log.info("GPP node registration is complete")
     except ConfigurationError, e:
         _log.error("%s", e)
         sys.exit(1)

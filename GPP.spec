@@ -26,7 +26,7 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        1.9.0
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        REDHAWK GPP
 
 Group:          Applications/Engineering
@@ -102,7 +102,7 @@ rm -rf $RPM_BUILD_ROOT
 
 # configure the gpp and the dcd
 echo "Configuring the Node..."
-%{_prefix}/dev/devices/%{name}/python/nodeconfig.py -v \
+%{_prefix}/dev/devices/%{name}/python/nodeconfig.py --silent \
     --clean \
     --gpppath=/devices/%{name} \
     --disableevents \
