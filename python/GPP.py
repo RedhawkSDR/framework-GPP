@@ -201,8 +201,8 @@ class GPP(GPP_base):
                 outputThread.setDaemon(True)
                 outputThread.start()
         finally:
-            self._popen_lock.release()
             os.read = reader.func
+            self._popen_lock.release()
 
         # TODO: SR:455
         # We need to detect failures to execute
@@ -762,7 +762,8 @@ class GPP(GPP_base):
 
         result = []
         for line in output[1:]:
-            if 'Permission denied' in line:
+            if 'Permission denied' in line or \
+               'Stale NFS file handle' in line:
                 continue
             fields = line.split()
             filesystem = fields[0]

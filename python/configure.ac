@@ -19,7 +19,7 @@
 #
 
 
-AC_INIT(GPP, 1.8.4)
+AC_INIT(GPP, 1.8.5)
 AM_INIT_AUTOMAKE(nostdinc)
 
 AC_PROG_INSTALL
@@ -28,6 +28,12 @@ AC_CORBA_ORB
 OSSIE_CHECK_OSSIE
 OSSIE_SDRROOT_AS_PREFIX
 AM_PATH_PYTHON([2.3])
+
+AC_ARG_WITH(domainname,
+	AS_HELP_STRING([--with-domainname=[domain name]], [Provide a domain name to the generated node, defaults to REDHAWK_DEV]),
+	gpp_node_domain=$withval,
+	gpp_node_domain=REDHAWK_DEV)
+AC_SUBST(DOMAINNAME, $gpp_node_domain)
 
 PKG_CHECK_MODULES([OSSIE], [ossie >= 1.8.3])
 AC_CHECK_PYMODULE(ossie, [], [AC_MSG_ERROR([the python ossie module is required])])
