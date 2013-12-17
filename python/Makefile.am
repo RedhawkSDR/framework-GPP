@@ -30,3 +30,7 @@ devdir = $(prefix)/dev/devices/GPP/python/
 include $(srcdir)/Makefile.am.ide
 dist_dev_SCRIPTS = $(redhawk_SCRIPTS_auto)
 dist_dev_DATA = $(redhawk_DATA_auto)
+
+create-gpp-node: install-am
+	./nodeconfig.py --inplace --clean --domainname=$(DOMAINNAME)
+

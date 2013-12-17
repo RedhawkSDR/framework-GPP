@@ -180,7 +180,7 @@ class GPP(GPP_base):
             reader = RetryFunc(os.read)
             os.read = reader
 
-            if self.componentOutputLog in (None, ""):
+            if self.componentOutputLog in (None, "") or self.useScreen:
                 stdoutanderr = None
             else:
                 realOutputLog = os.path.expandvars(self.componentOutputLog)
@@ -710,11 +710,11 @@ class GPP(GPP_base):
         try:
             memTotal = meminfo['MemTotal'][0]
             units = meminfo['MemTotal'][1]
-            assert units == "kB" # We don't expect the Linux kernal to change this
+            assert units == "kB" # We don't expect the Linux kernel to change this
 
             swapTotal = meminfo['SwapTotal'][0]
             units = meminfo['SwapTotal'][1]
-            assert units == "kB" # We don't expect the Linux kernal to change this
+            assert units == "kB" # We don't expect the Linux kernel to change this
 
             # The kernel reports KiB values but uses the old notation of kB
             value = (memTotal + swapTotal)
@@ -735,15 +735,15 @@ class GPP(GPP_base):
             try:
                 commited_as = meminfo['Committed_AS'][0]
                 units = meminfo['Committed_AS'][1]
-                assert units == "kB" # We don't expect the Linux kernal to change this
+                assert units == "kB" # We don't expect the Linux kernel to change this
                 # The kernel reports KiB values but uses the old notation of kB
                 commited_as = commited_as / 1024
                 return total - commited_as
             except KeyError:
                 # Fall back to MemFree
                 value = meminfo['MemFree'][0]
-                value = meminfo['MemFree'][1]
-                assert units == "kB" # We don't expect the Linux kernal to change this
+                units = meminfo['MemFree'][1]
+                assert units == "kB" # We don't expect the Linux kernel to change this
                 # The kernel reports KiB values but uses the old notation of kB
                 value = value / 1024
                 return value
@@ -762,7 +762,8 @@ class GPP(GPP_base):
 
         result = []
         for line in output[1:]:
-            if 'Permission denied' in line:
+            if 'Permission denied' in line or \
+               'Stale NFS file handle' in line:
                 continue
             fields = line.split()
             filesystem = fields[0]
