@@ -23,10 +23,10 @@
 # AUTO-GENERATED CODE.  DO NOT MODIFY!
 #
 # Source: GPP.spd.xml
-# Generated on: Mon Oct 08 18:24:53 EDT 2012
-# Redhawk IDE
-# Version:M.1.8.1
-# Build id: v201209290832
+# Generated on: Mon Dec 09 18:17:47 EST 2013
+# REDHAWK IDE
+# Version: 1.8.4
+# Build id: R201305151907
 from ossie.cf import CF, CF__POA
 from ossie.utils import uuid
 
@@ -200,6 +200,7 @@ class GPP_base(CF__POA.AggregateExecutableDevice,ExecutableDevice, AggregateDevi
         os_name = simple_property(id_="DCE:4a23ad60-0b25-4121-a630-68803a498f75",
                                           name="os_name", 
                                           type_="string",
+                                          defvalue="Linux",
                                           mode="readwrite",
                                           action="eq",
                                           kinds=("execparam","allocation"),
@@ -224,9 +225,9 @@ class GPP_base(CF__POA.AggregateExecutableDevice,ExecutableDevice, AggregateDevi
         processor_cores = simple_property(id_="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3",
                                           name="processor_cores", 
                                           type_="long",
-                                          mode="readwrite",
+                                          mode="readonly",
                                           action="external",
-                                          kinds=("allocation","configure"),
+                                          kinds=("allocation",),
                                           description="""The number of true processing cores that can execute programs concurrently (i.e. not hyperthreaded).  Although external, implemented with behavior identical to a matching property with action 'le'""" 
                                           )       
         memTotal = simple_property(id_="DCE:329d9304-839e-4fec-a36f-989e3b4d311d",
@@ -453,11 +454,13 @@ class GPP_base(CF__POA.AggregateExecutableDevice,ExecutableDevice, AggregateDevi
                                           type_="double",
                                           )
         
-            def __init__(self):
+            def __init__(self, **kw):
                 """Construct an initialized instance of this struct definition"""
                 for attrname, classattr in type(self).__dict__.items():
                     if type(classattr) == simple_property:
                         classattr.initialize(self)
+                for k,v in kw.items():
+                    setattr(self,k,v)
 
             def __str__(self):
                 """Return a string representation of this structure"""

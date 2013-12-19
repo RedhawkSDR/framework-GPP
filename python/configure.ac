@@ -19,7 +19,7 @@
 #
 
 
-AC_INIT(GPP, 1.8.5)
+AC_INIT(GPP, 1.8.6)
 AM_INIT_AUTOMAKE(nostdinc)
 
 AC_PROG_INSTALL

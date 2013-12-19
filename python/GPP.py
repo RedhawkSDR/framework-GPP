@@ -71,148 +71,154 @@ class GPP(GPP_base):
     ###########################################
     # CF::ExecutableDevice
     def execute(self, name, options, parameters):
-        self._log.debug("execute(%s, %s, %s)", name, options, parameters)
-        if not name.startswith("/"):
-            raise CF.InvalidFileName(CF.CF_EINVAL, "Filename must be absolute")
-
-        if self.isLocked(): raise CF.Device.InvalidState("System is locked down")
-        if self.isDisabled(): raise CF.Device.InvalidState("System is disabled")
-
-        # TODO SR:448
-        priority = 0
-        stack_size = 4096
-        invalidOptions = []
-        for option in options:
-            val = option.value.value()
-            if option.id == CF.ExecutableDevice.PRIORITY_ID:
-                if ((not isinstance(val, int)) and (not isinstance(val, long))):
-                    invalidOptions.append(option)
-                else:
-                    priority = val
-            elif option.id == CF.ExecutableDevice.STACK_SIZE_ID:
-                if ((not isinstance(val, int)) and (not isinstance(val, long))):
-                    invalidOptions.append(option)
-                else:
-                    stack_size = val
-        if len(invalidOptions) > 0:
-            self._log.error("execute() received invalid options %s", invalidOptions)
-            raise CF.ExecutableDevice.InvalidOptions(invalidOptions)
-
-        command = os.path.abspath(name[1:]) # This is relative to our CWD
-        self._log.debug("Running %s %s", command, os.getcwd())
-
-        # SR:452
-        # TODO should we also check the load file reference count?
-        # Workaround
-        if not os.path.isfile(command):
-            raise CF.InvalidFileName(CF.CF_EINVAL, "File could not be found %s" % command)
-        os.chmod(command, stat.S_IEXEC | stat.S_IREAD | stat.S_IWRITE)
-
-        args = []
-        if self.useScreen:
-            os.environ["GPP_LD_LIBRARY_PATH"] = os.environ.get("LD_LIBRARY_PATH", "")
-            # From the man page:
-            #   -D -m   This starts screen in "detached" mode,
-            #           but doesn't fork a new process.
-            #           The command exits if the session terminates.
-            args.extend(["screen", "-D", "-m", "-c", os.path.join(MY_DIR, "gpp.screenrc")])
-            #args.extend(["screen", "-D", "-m"])
-
-            # Attempt to figure out a useful screen session name
-            component_id = None
-            component_name = None
-            for param in parameters:
-                if param.id == "COMPONENT_IDENTIFIER" and param.value.value() != None:
-                    component_id = param.value.value()
-                elif param.id == "NAME_BINDING" and param.value.value() != None:
-                    component_name = param.value.value()
-
-            if component_id != None and component_name != None:
-                # component_id is in the form <componentinstantiationid>:<waveformname>
-                try:
-                    if component_id.startswith("DCE:"):
-                        component_id = component_id[4:]
-                    component_inst_id, waveform_name = component_id.split(":", 1)
-                    args.extend(["-S", "%s.%s" % (waveform_name, component_name)])
-                    args.extend(["-t", "%s.%s" % (waveform_name, component_name)])
-                except ValueError:
-                    pass
-
-        args.append(command)
-
-        # SR:446, SR:447
-        for param in parameters:
-            if param.value.value() != None:
-                args.append(str(param.id))
-                # SR:453 indicates that an InvalidParameters exception should be
-                # raised if the input parameter is not of a string type; however,
-                # version 2.2.2 of the SCA spec is less strict in its wording. For
-                # our part, as long as the value can be stringized, it is accepted,
-                # to allow component developers to use more specific types.
-                try:
-                    args.append(str(param.value.value()))
-                except:
-                    raise CF.ExecutableDevice.InvalidParameters([param])
-        self._log.debug("Popen %s %s", command, args)
-
-
-        # SR:445
-        self._popen_lock.acquire()
+        self._log.debug("EXCUTE  (START)  NAME:" + str(name)+ " CWD:" + os.getcwd() )
+        self._cmdLock.acquire()
         try:
-            # Python's subprocess module has a bug where it propagates the exception to
-            # the caller when it gets interrupted trying to read the status back from the
-            # child process, leaving the child process effectively orphaned and registering
-            # a false failure. To work around it, we temporarily replace os.read with a
-            # retrying version that allows Popen to succeed in this case.
-            class RetryFunc(object):
-                def __init__ (self, func):
-                    import os
-                    self.func = func
+            self._log.debug("execute(%s, %s, %s)", name, options, parameters)
+            if not name.startswith("/"):
+                raise CF.InvalidFileName(CF.CF_EINVAL, "Filename must be absolute")
 
-                def __call__ (self, *args, **kwargs):
-                    while True:
-                        try:
-                            return self.func(*args, **kwargs)
-                        except OSError, e:
-                            if e.errno != errno.EINTR:
-                                raise
+            if self.isLocked(): raise CF.Device.InvalidState("System is locked down")
+            if self.isDisabled(): raise CF.Device.InvalidState("System is disabled")
 
-            reader = RetryFunc(os.read)
-            os.read = reader
+            # TODO SR:448
+            priority = 0
+            stack_size = 4096
+            invalidOptions = []
+            for option in options:
+                val = option.value.value()
+                if option.id == CF.ExecutableDevice.PRIORITY_ID:
+                    if ((not isinstance(val, int)) and (not isinstance(val, long))):
+                        invalidOptions.append(option)
+                    else:
+                        priority = val
+                elif option.id == CF.ExecutableDevice.STACK_SIZE_ID:
+                    if ((not isinstance(val, int)) and (not isinstance(val, long))):
+                        invalidOptions.append(option)
+                    else:
+                        stack_size = val
+            if len(invalidOptions) > 0:
+                self._log.error("execute() received invalid options %s", invalidOptions)
+                raise CF.ExecutableDevice.InvalidOptions(invalidOptions)
 
-            if self.componentOutputLog in (None, ""):
-                stdoutanderr = None
-            else:
-                realOutputLog = os.path.expandvars(self.componentOutputLog)
-                realOutputLog = self.expandproperties(realOutputLog, parameters)
-                stdoutanderr = subprocess.PIPE
+            command = os.path.abspath(name[1:]) # This is relative to our CWD
+            self._log.debug("Running %s %s", command, os.getcwd())
 
-            # TODO in 1.7.2 switch to ossie.utils.Popen
+            # SR:452
+            # TODO should we also check the load file reference count?
+            # Workaround
+            if not os.path.isfile(command):
+                raise CF.InvalidFileName(CF.CF_EINVAL, "File could not be found %s" % command)
+            os.chmod(command, stat.S_IEXEC | stat.S_IREAD | stat.S_IWRITE)
+
+            args = []
+            if self.useScreen:
+                os.environ["GPP_LD_LIBRARY_PATH"] = os.environ.get("LD_LIBRARY_PATH", "")
+                # From the man page:
+                #   -D -m   This starts screen in "detached" mode,
+                #           but doesn't fork a new process.
+                #           The command exits if the session terminates.
+                args.extend(["screen", "-D", "-m", "-c", os.path.join(MY_DIR, "gpp.screenrc")])
+                #args.extend(["screen", "-D", "-m"])
+
+                # Attempt to figure out a useful screen session name
+                component_id = None
+                component_name = None
+                for param in parameters:
+                    if param.id == "COMPONENT_IDENTIFIER" and param.value.value() != None:
+                        component_id = param.value.value()
+                    elif param.id == "NAME_BINDING" and param.value.value() != None:
+                        component_name = param.value.value()
+
+                if component_id != None and component_name != None:
+                    # component_id is in the form <componentinstantiationid>:<waveformname>
+                    try:
+                        if component_id.startswith("DCE:"):
+                            component_id = component_id[4:]
+                        component_inst_id, waveform_name = component_id.split(":", 1)
+                        args.extend(["-S", "%s.%s" % (waveform_name, component_name)])
+                        args.extend(["-t", "%s.%s" % (waveform_name, component_name)])
+                    except ValueError:
+                        pass
+
+            args.append(command)
+
+            # SR:446, SR:447
+            for param in parameters:
+                if param.value.value() != None:
+                    args.append(str(param.id))
+                    # SR:453 indicates that an InvalidParameters exception should be
+                    # raised if the input parameter is not of a string type; however,
+                    # version 2.2.2 of the SCA spec is less strict in its wording. For
+                    # our part, as long as the value can be stringized, it is accepted,
+                    # to allow component developers to use more specific types.
+                    try:
+                        args.append(str(param.value.value()))
+                    except:
+                        raise CF.ExecutableDevice.InvalidParameters([param])
+            self._log.debug("Popen %s %s", command, args)
+
+
+            # SR:445
+            self._popen_lock.acquire()
             try:
-                sp = subprocess.Popen(args, executable=args[0], cwd=os.getcwd(), env=os.environ, close_fds=True, stdin=self._devnull, stdout=stdoutanderr, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp)
-            except OSError, e:
-                # CF error codes do not map directly to errno codes, so omit the enumerated value.
-                self._log.error("subprocess.Popen: %s", e.strerror)
-                raise CF.ExecutableDevice.ExecuteFail(CF.CF_NOTSET, e.strerror)
+                # Python's subprocess module has a bug where it propagates the exception to
+                # the caller when it gets interrupted trying to read the status back from the
+                # child process, leaving the child process effectively orphaned and registering
+                # a false failure. To work around it, we temporarily replace os.read with a
+                # retrying version that allows Popen to succeed in this case.
+                class RetryFunc(object):
+                    def __init__ (self, func):
+                        import os
+                        self.func = func
 
-            # Launch a thread to handle re-directing stdout/stderr to a file
-            if stdoutanderr != None:
-                outputThread = threading.Thread(target=self._handlestdoutanderr, args=(sp, realOutputLog))
-                outputThread.setDaemon(True)
-                outputThread.start()
+                    def __call__ (self, *args, **kwargs):
+                        while True:
+                            try:
+                                return self.func(*args, **kwargs)
+                            except OSError, e:
+                                if e.errno != errno.EINTR:
+                                    raise
+
+                reader = RetryFunc(os.read)
+                os.read = reader
+
+                if self.componentOutputLog in (None, "") or self.useScreen:
+                    stdoutanderr = None
+                else:
+                    realOutputLog = os.path.expandvars(self.componentOutputLog)
+                    realOutputLog = self.expandproperties(realOutputLog, parameters)
+                    stdoutanderr = subprocess.PIPE
+
+                # TODO in 1.7.2 switch to ossie.utils.Popen
+                try:
+                    sp = subprocess.Popen(args, executable=args[0], cwd=os.getcwd(), env=os.environ, close_fds=True, stdin=self._devnull, stdout=stdoutanderr, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp)
+                except OSError, e:
+                    # CF error codes do not map directly to errno codes, so omit the enumerated value.
+                    self._log.error("subprocess.Popen: %s", e.strerror)
+                    raise CF.ExecutableDevice.ExecuteFail(CF.CF_NOTSET, e.strerror)
+
+                # Launch a thread to handle re-directing stdout/stderr to a file
+                if stdoutanderr != None:
+                    outputThread = threading.Thread(target=self._handlestdoutanderr, args=(sp, realOutputLog))
+                    outputThread.setDaemon(True)
+                    outputThread.start()
+            finally:
+                os.read = reader.func
+                self._popen_lock.release()
+
+            # TODO: SR:455
+            # We need to detect failures to execute
+
+            pid = sp.pid
+            self._applications[pid] = sp
+            # SR:449
+            self._log.debug("execute() --> %s", pid)
+            self._log.debug("APPLICATIONS %s", self._applications)
+            return pid
         finally:
-            os.read = reader.func
-            self._popen_lock.release()
-
-        # TODO: SR:455
-        # We need to detect failures to execute
-
-        pid = sp.pid
-        self._applications[pid] = sp
-        # SR:449
-        self._log.debug("execute() --> %s", pid)
-        self._log.debug("APPLICATIONS %s", self._applications)
-        return pid
+            self._log.debug("EXCUTE  (END)  NAME:" + str(name)+ " CWD:" + os.getcwd() )            
+            self._cmdLock.release()
 
     def _handlestdoutanderr(self, proc, outputLog):
         self._log.debug("Redirecting stdout/stderr for component (pid %s) to %s", proc.pid, outputLog)
@@ -710,11 +716,11 @@ class GPP(GPP_base):
         try:
             memTotal = meminfo['MemTotal'][0]
             units = meminfo['MemTotal'][1]
-            assert units == "kB" # We don't expect the Linux kernal to change this
+            assert units == "kB" # We don't expect the Linux kernel to change this
 
             swapTotal = meminfo['SwapTotal'][0]
             units = meminfo['SwapTotal'][1]
-            assert units == "kB" # We don't expect the Linux kernal to change this
+            assert units == "kB" # We don't expect the Linux kernel to change this
 
             # The kernel reports KiB values but uses the old notation of kB
             value = (memTotal + swapTotal)
@@ -735,15 +741,15 @@ class GPP(GPP_base):
             try:
                 commited_as = meminfo['Committed_AS'][0]
                 units = meminfo['Committed_AS'][1]
-                assert units == "kB" # We don't expect the Linux kernal to change this
+                assert units == "kB" # We don't expect the Linux kernel to change this
                 # The kernel reports KiB values but uses the old notation of kB
                 commited_as = commited_as / 1024
                 return total - commited_as
             except KeyError:
                 # Fall back to MemFree
                 value = meminfo['MemFree'][0]
-                value = meminfo['MemFree'][1]
-                assert units == "kB" # We don't expect the Linux kernal to change this
+                units = meminfo['MemFree'][1]
+                assert units == "kB" # We don't expect the Linux kernel to change this
                 # The kernel reports KiB values but uses the old notation of kB
                 value = value / 1024
                 return value

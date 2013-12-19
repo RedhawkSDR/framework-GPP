@@ -24,8 +24,14 @@
 %define _prefix %{_sdrroot}
 Prefix: %{_prefix}
 
+# Point install paths to locations within our target SDR root
+%define _sysconfdir    %{_prefix}/etc
+%define _localstatedir %{_prefix}/var
+%define _mandir        %{_prefix}/man
+%define _infodir       %{_prefix}/info
+
 Name:           GPP
-Version:        1.8.5
+Version:        1.8.6
 Release:        1%{?dist}
 Summary:        Redhawk GPP
 
@@ -60,6 +66,9 @@ Obsoletes:      redhawk-GPP-profile
 
 %description
 A device representing a general purpose processor
+ * Commit: __REVISION__
+ * Source Date/Time: __DATETIME__
+
 
 %description profile
 Generates a GPP profile on the installation machine
