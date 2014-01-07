@@ -32,7 +32,7 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        1.8.6
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Redhawk GPP
 
 Group:          Applications/Engineering
@@ -43,8 +43,8 @@ Source:         %{name}-%{version}.tar.gz
 BuildArch:      noarch
 BuildRoot:      %{_tmppath}/%{name}-root
 
-Requires:       redhawk >= 1.8.3
-BuildRequires:  redhawk >= 1.8.3
+Requires:       redhawk >= 1.8.5
+BuildRequires:  redhawk >= 1.8.5
 BuildRequires:  autoconf automake libtool
 
 # Python requirements
@@ -58,7 +58,7 @@ Obsoletes:      redhawk-GPP
 %package profile
 Summary:        Basic GPP profile
 Group:          Redhawk/Framework
-Prereq:         redhawk >= 1.8.3
+Prereq:         redhawk >= 1.8.5
 Prereq:         %{name} = %{version}-%{release}
 
 # Temporary to aide with upgrading from 1.7.X
@@ -84,7 +84,7 @@ pushd python
 ./reconf
 %define _bindir %{_prefix}/dev/devices/GPP/python
 %configure
-make
+make %{?_smp_mflags}
 popd
 
 
@@ -102,7 +102,7 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %files
-%defattr(-,redhawk,redhawk)
+%defattr(-,redhawk,redhawk,-)
 %dir %{_prefix}/dev/devices/%{name}
 %{_prefix}/dev/devices/%{name}/GPP.spd.xml
 %{_prefix}/dev/devices/%{name}/GPP.prf.xml
@@ -129,6 +129,9 @@ echo "Configuring the Node..."
 
 
 %changelog
+* Fri Dec 20 2013 1.8.6-1.1
+- Requires RH 1.8.5 or newer
+
 * Fri Mar 29 2012 1.8.4-1
 - Remove unnecessary defines
 - Correct required version of Redhawk; needs at least 1.8.3 due to eventing

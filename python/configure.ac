@@ -35,7 +35,7 @@ AC_ARG_WITH(domainname,
 	gpp_node_domain=REDHAWK_DEV)
 AC_SUBST(DOMAINNAME, $gpp_node_domain)
 
-PKG_CHECK_MODULES([OSSIE], [ossie >= 1.8.3])
+PKG_CHECK_MODULES([OSSIE], [ossie >= 1.8.5])
 AC_CHECK_PYMODULE(ossie, [], [AC_MSG_ERROR([the python ossie module is required])])
 PKG_CHECK_MODULES([OMNIORB], [omniORB4 >= 4.0.0])
 AC_CHECK_PYMODULE(omniORB, [], [AC_MSG_ERROR([the python omniORB module is required])])

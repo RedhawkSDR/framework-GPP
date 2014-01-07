@@ -20,7 +20,7 @@ with this program.  If not, see http://www.gnu.org/licenses/.
 -->
 
 <!DOCTYPE softpkg SYSTEM "softpkg.dtd">
-<softpkg id="DCE:4e20362c-4442-4656-af6d-aedaaf13b275" name="GPP" type="sca_compliant" version="__VERSION__">
+<softpkg id="DCE:4e20362c-4442-4656-af6d-aedaaf13b275" name="GPP" type="sca_compliant" version="1.8.6">
   <title>Redhawk GPP</title>
   <author>
     <name></name>

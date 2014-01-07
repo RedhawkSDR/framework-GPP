@@ -28,7 +28,7 @@ with this program.  If not, see http://www.gnu.org/licenses/.
       <generatedFileCRCs crc="995963531" file="Makefile.am"/>
       <generatedFileCRCs crc="2387508217" file="configure.ac"/>
       <generatedFileCRCs crc="1746641546" file="reconf"/>
-      <generatedFileCRCs crc="1056272802" file="../GPP.spec"/>
+      <generatedFileCRCs crc="3428330638" file="../GPP.spec"/>
     </value>
   </implSettings>
 </codegen:WaveDevSettings>
