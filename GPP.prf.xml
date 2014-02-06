@@ -36,6 +36,7 @@ with this program.  If not, see http://www.gnu.org/licenses/.
   </simple>
   <simple id="DCE:4a23ad60-0b25-4121-a630-68803a498f75" mode="readwrite" name="os_name" type="string">
     <description>SCA required property describing the Operating System Name.</description>
+    <value>Linux</value>
     <kind kindtype="execparam"/>
     <kind kindtype="allocation"/>
     <action type="eq"/>
@@ -52,10 +53,9 @@ with this program.  If not, see http://www.gnu.org/licenses/.
     <kind kindtype="execparam"/>
     <action type="eq"/>
   </simple>
-  <simple id="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3" mode="readwrite" name="processor_cores" type="long">
+  <simple id="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3" mode="readonly" name="processor_cores" type="long">
     <description>The number of true processing cores that can execute programs concurrently (i.e. not hyperthreaded).  Although external, implemented with behavior identical to a matching property with action 'le'</description>
     <kind kindtype="allocation"/>
-    <kind kindtype="configure"/>
     <action type="external"/>
   </simple>
   <simplesequence id="DCE:7c922411-5085-4a89-992d-0a0a51767aea" mode="readonly" name="processor_flags" type="string">

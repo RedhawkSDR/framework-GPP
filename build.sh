@@ -19,15 +19,14 @@
 # along with this program.  If not, see http://www.gnu.org/licenses/.
 #
 
-
-if [ "$1" == "rpm" ]; then
+if [ "$1" = "rpm" ]; then
     # A very simplistic RPM build scenario
     if [ -e GPP.spec ]; then
         mydir=`dirname $0`
         tmpdir=`mktemp -d`
-        cp -r ${mydir} ${tmpdir}/GPP-1.9.0
-        tar czf ${tmpdir}/GPP-1.9.0.tar.gz --exclude=".svn" -C ${tmpdir} GPP-1.9.0
-        rpmbuild -ta ${tmpdir}/GPP-1.9.0.tar.gz
+        cp -r ${mydir} ${tmpdir}/GPP-1.9.1
+        tar czf ${tmpdir}/GPP-1.9.1.tar.gz --exclude=".svn" -C ${tmpdir} GPP-1.9.1
+        rpmbuild -ta ${tmpdir}/GPP-1.9.1.tar.gz
         rm -rf $tmpdir
     else
         echo "Missing RPM spec file in" `pwd`
@@ -35,12 +34,14 @@ if [ "$1" == "rpm" ]; then
     fi
 else
     for impl in python ; do
-        pushd $impl &> /dev/null
+        cd $impl
         if [ -e build.sh ]; then
             ./build.sh $*
+        elif [ -e reconf ]; then
+            ./reconf && ./configure && make
         else
             echo "No build.sh found for $impl"
         fi
-        popd &> /dev/null
+        cd -
     done
 fi
