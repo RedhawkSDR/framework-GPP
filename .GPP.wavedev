@@ -24,11 +24,11 @@ with this program.  If not, see http://www.gnu.org/licenses/.
     <value name="GPP" outputDir="python" template="gov.redhawk.ide.codegen.jet.python.pattern.PullPortDataTemplate" generatorId="gov.redhawk.ide.codegen.jet.python.PythonGenerator">
       <properties id="use_old_style" value="false"/>
       <properties id="auto_start_component" value="false"/>
-      <generatedFileCRCs crc="396579487" file="GPP_base.py"/>
-      <generatedFileCRCs crc="2836446512" file="Makefile.am"/>
+      <generatedFileCRCs crc="1787536146" file="GPP_base.py"/>
+      <generatedFileCRCs crc="995963531" file="Makefile.am"/>
       <generatedFileCRCs crc="2387508217" file="configure.ac"/>
       <generatedFileCRCs crc="1746641546" file="reconf"/>
-      <generatedFileCRCs crc="1056272802" file="../GPP.spec"/>
+      <generatedFileCRCs crc="3428330638" file="../GPP.spec"/>
     </value>
   </implSettings>
 </codegen:WaveDevSettings>

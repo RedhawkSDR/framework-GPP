@@ -24,9 +24,15 @@
 %define _prefix %{_sdrroot}
 Prefix: %{_prefix}
 
+# Point install paths to locations within our target SDR root
+%define _sysconfdir    %{_prefix}/etc
+%define _localstatedir %{_prefix}/var
+%define _mandir        %{_prefix}/man
+%define _infodir       %{_prefix}/info
+
 Name:           GPP
 Version:        1.10.0
-Release:        0.1%{?dist}
+Release:        0.1.1%{?dist}
 Summary:        REDHAWK GPP
 
 Group:          Applications/Engineering
@@ -67,7 +73,7 @@ pushd python
 ./reconf
 %define _bindir %{_prefix}/dev/devices/GPP/python
 %configure
-make
+make %{?_smp_mflags}
 popd
 
 
@@ -85,7 +91,7 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %files
-%defattr(-,redhawk,redhawk)
+%defattr(-,redhawk,redhawk,-)
 %dir %{_prefix}/dev/devices/%{name}
 %{_prefix}/dev/devices/%{name}/GPP.spd.xml
 %{_prefix}/dev/devices/%{name}/GPP.prf.xml
