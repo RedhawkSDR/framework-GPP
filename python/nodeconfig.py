@@ -21,6 +21,7 @@
 
 import os, sys, commands, logging, platform, shutil, socket
 from ossie import parsers
+from ossie.utils.model import _uuidgen as uuidgen
 
 class ConfigurationError(StandardError):
     pass
@@ -58,13 +59,13 @@ class NodeConfig(object):
             
         # prep uuids
         self.uuids = {}
-        self.uuids["softpkg"                ] = 'DCE:' + commands.getoutput("uuidgen")
-        self.uuids["implementation"         ] = 'DCE:' + commands.getoutput("uuidgen")
-        self.uuids["deviceconfiguration"    ] = 'DCE:' + commands.getoutput("uuidgen")
-        self.uuids["componentfile"          ] = 'DCE:' + commands.getoutput("uuidgen")
-        self.uuids["componentinstantiation" ] = 'DCE:' + commands.getoutput("uuidgen")
-        self.uuids["componentimplementation"] = 'DCE:' + commands.getoutput("uuidgen")
-        self.uuids["componentsoftpkg"       ] = 'DCE:' + commands.getoutput("uuidgen")
+        self.uuids["softpkg"                ] = 'DCE:' + uuidgen()
+        self.uuids["implementation"         ] = 'DCE:' + uuidgen()
+        self.uuids["deviceconfiguration"    ] = 'DCE:' + uuidgen()
+        self.uuids["componentfile"          ] = 'DCE:' + uuidgen()
+        self.uuids["componentinstantiation" ] = 'DCE:' + uuidgen()
+        self.uuids["componentimplementation"] = 'DCE:' + uuidgen()
+        self.uuids["componentsoftpkg"       ] = 'DCE:' + uuidgen()
         
         self.props = {}
 
@@ -88,7 +89,10 @@ class NodeConfig(object):
         self.props['os_name']    = platform.system()
         self.props['os_version'] = platform.release()
         tmp_uname_p    = platform.processor()
-        tmp_proc_map   = {'i386':'x86', 'i686':'x86', 'x86_64':'x86_64'}
+        tmp_proc_map   = {'i386':'x86', 
+                          'i686':'x86', 
+                          'x86_64':'x86_64', 
+                          'armv7l':'armv7l'}
         self.props['processor_name']  = tmp_proc_map.get(tmp_uname_p, 'x86')
 
         self._gather_java_information()
@@ -384,7 +388,7 @@ class NodeConfig(object):
         except OSError:
             raise Exception, "Could not create device manager directory"
 
-        GPP_componentfile = 'GPP_' + commands.getoutput("uuidgen")
+        GPP_componentfile = 'GPP_' + uuidgen()
         if self.options.inplace:
             compfiles = [{'id':GPP_componentfile, 'localfile':os.path.join('/devices', 'GPP', 'GPP.spd.xml')}]
         else:
