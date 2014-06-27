@@ -753,7 +753,10 @@ class GPP(GPP_base):
 
     def get_fileSystems(self):
         """Use df to provide the current status for all file systems on this machine."""
-        status, output = commands.getstatusoutput("/bin/df -P -k") # Use the POSIX definition of df for maximum portability
+        # Use the POSIX definition of df for maximum portability; ignore stderr
+        # for some systems, such as Ubuntu 14.04, that may print an otherwise
+        # harmless error message
+        status, output = commands.getstatusoutput("/bin/df -P -k 2>/dev/null")
         output = output.split("\n")
         # Validate the first line looks as expected
         fields = output[0].split()
