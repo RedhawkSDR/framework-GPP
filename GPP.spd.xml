@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE softpkg PUBLIC "-//JTRS//DTD SCA V2.2.2 SPD//EN" "softpkg.dtd">
 <!--
 This file is protected by Copyright. Please refer to the COPYRIGHT file 
 distributed with this source distribution.
@@ -18,12 +18,10 @@ details.
 You should have received a copy of the GNU Lesser General Public License along 
 with this program.  If not, see http://www.gnu.org/licenses/.
 -->
-
-<!DOCTYPE softpkg SYSTEM "softpkg.dtd">
-<softpkg id="DCE:4e20362c-4442-4656-af6d-aedaaf13b275" name="GPP" type="sca_compliant" version="1.10.0">
+<softpkg version="1.10.1" id="DCE:4e20362c-4442-4656-af6d-aedaaf13b275" name="GPP" type="sca_compliant">
   <title>Redhawk GPP</title>
   <author>
-    <name></name>
+    <name/>
   </author>
   <description>A device representing a general purpose processor</description>
   <propertyfile type="PRF">
