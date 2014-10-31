@@ -259,6 +259,7 @@ class GPP(GPP_base):
                 outputLogFile.flush()
                 lastFlush = time.time()
                 continue
+        if outputLogFile: outputLogFile.close()
         self._log.debug("Detected stdout/stderr EOS for component (pid %s)", proc.pid)
 
     def expandproperties(self, path, parameters):
@@ -517,6 +518,7 @@ class GPP(GPP_base):
             result[-1][name] = value
 
         assert len(result) > 0
+        if cpuinfo : cpuinfo.close()
         return result
 
     def _meminfo(self):
@@ -546,6 +548,8 @@ class GPP(GPP_base):
                 pass
 
             result[name] = (value, units)
+
+        if meminfo : meminfo.close()
         return result
 
     def _netstat(self):
@@ -759,8 +763,9 @@ class GPP(GPP_base):
 
     def get_fileSystems(self):
         """Use df to provide the current status for all file systems on this machine."""
-        status, output = commands.getstatusoutput("/bin/df -P -k") # Use the POSIX definition of df for maximum portability
-        output = output.split("\n")
+        res = subprocess.Popen(['/bin/df','-P','-k'], stdout=subprocess.PIPE, stderr=self._devnull)
+        res.wait()
+        output=res.stdout.read().split('\n')
         # Validate the first line looks as expected
         fields = output[0].split()
         if fields != ["Filesystem", "1024-blocks", "Used", "Available", "Capacity", "Mounted", "on"]:
@@ -769,7 +774,8 @@ class GPP(GPP_base):
         result = []
         for line in output[1:]:
             if 'Permission denied' in line or \
-               'Stale NFS file handle' in line:
+               'Stale NFS file handle' in line or  \
+               '' == line :
                 continue
             fields = line.split()
             filesystem = fields[0]
