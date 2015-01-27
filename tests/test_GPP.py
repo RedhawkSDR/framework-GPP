@@ -20,7 +20,6 @@
 #
 
 import unittest
-import ossie.utils.testing
 import os
 import socket
 import time
@@ -29,10 +28,14 @@ import sys
 import threading
 import Queue
 from omniORB import any
-from ossie.cf import CF, CF__POA
 from ossie.cf import ExtendedEvent
 from omniORB import CORBA
 import CosEventChannelAdmin, CosEventChannelAdmin__POA
+from ossie.utils.sandbox.registrar import ApplicationRegistrarStub
+import subprocess, multiprocessing
+from ossie.utils import sb
+from ossie.cf import CF, CF__POA
+import ossie.utils.testing
 
 class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
     """Test for all component implementations in test"""
@@ -59,6 +62,9 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         execparams = self.getPropertySet(kinds=("execparam",), modes=("readwrite", "writeonly"), includeNil=False)
         execparams = dict([(x.id, any.from_any(x.value)) for x in execparams])
         execparams.update(execparam_overrides)
+        #execparams = self.getPropertySet(kinds=("execparam",), modes=("readwrite", "writeonly"), includeNil=False)
+        #execparams = dict([(x.id, any.from_any(x.value)) for x in execparams])
+        #self.launch(execparams, debugger='valgrind')
         self.launch(execparams)
         
         #######################################################################
@@ -66,7 +72,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assertNotEqual(self.comp_obj, None)
         self.assertEqual(self.comp_obj._non_existent(), False)
         self.assertEqual(self.comp_obj._is_a("IDL:CF/ExecutableDevice:1.0"), True)
-        self.assertEqual(self.spd.get_id(), self.comp_obj._get_identifier())
+        #self.assertEqual(self.spd.get_id(), self.comp_obj._get_identifier())
         
     def testScaBasicBehavior(self):
         #######################################################################
@@ -96,7 +102,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
             self.assertEquals(props.has_key(expectedProp.id), True)
         
         qr = [CF.DataType(id="DCE:9190eb70-bd1e-4556-87ee-5a259dcfee39", value=any.to_any(None)), # hostName
-              CF.DataType(id="DCE:7f36cdfb-f828-4e4f-b84f-446e17f1a85b", value=any.to_any(None)), # DeviceKind
+              CF.DataType(id="DCE:cdc5ee18-7ceb-4ae6-bf4c-31f983179b4d", value=any.to_any(None)), # DeviceKind
               CF.DataType(id="DCE:4a23ad60-0b25-4121-a630-68803a498f75", value=any.to_any(None)), # os_name
               CF.DataType(id="DCE:0f3a9a37-a342-43d8-9b7f-78dc6da74192", value=any.to_any(None)), # os_version
               CF.DataType(id="DCE:fefb9c66-d14a-438d-ad59-2cfd1adb272b", value=any.to_any(None)), # processor_name
@@ -131,361 +137,6 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         # Simulate regular component shutdown
         self.comp_obj.releaseObject()
         
-    def testMemoryCapacityAllocation(self):
-        #######################################################################
-        # Launch the device
-        self.runGPP()
-        
-        #######################################################################
-        # Simulate regular component startup
-        # Verify that initialize nor configure throw errors
-        self.comp_obj.initialize()
-        configureProps = self.getPropertySet(kinds=("configure",), modes=("readwrite", "writeonly"), includeNil=False)
-        self.comp_obj.configure(configureProps)
-        
-        #######################################################################
-        # Test memory capacity
-        qr = [CF.DataType(id="DCE:329d9304-839e-4fec-a36f-989e3b4d311d", value=any.to_any(None)), # memTotal
-              CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(None)), # memCapacity
-              CF.DataType(id="DCE:fc24e19d-eda9-4200-ae96-8ba2ed953128", value=any.to_any(None)), # memThreshold
-              CF.DataType(id="DCE:6565bffd-cb09-4927-9385-2ecac68035c7", value=any.to_any(None)), # memFree
-             ]
-        qr = self.comp_obj.query(qr)
-        memTotal = qr[0].value.value()
-        memCapacity = qr[1].value.value()
-        memThreshold = qr[2].value.value()
-        memFree = qr[3].value.value()
-        self.assertEqual(int(memCapacity), int(memTotal*(memThreshold/100.0)))
-        self.assert_(memFree > 0)
-        self.assert_(memFree < memTotal)
-        
-        allocateMemCapacity = memCapacity / 4
-        for i in xrange(1,5):
-            # All four should succeed
-            allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(allocateMemCapacity))])
-            self.assertEqual(allocated, True)
-            qr = [CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(None))]
-            qr = self.comp_obj.query(qr)
-            self.assertEqual(qr[0].value.value(), memCapacity - (i*allocateMemCapacity))
-            
-        # The next allocation should fail
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(allocateMemCapacity))])
-        self.assertEqual(allocated, False)
-        
-        # Deallocate and try again
-        self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(allocateMemCapacity))])
-        qr = [CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertEqual(qr[0].value.value(), memCapacity - (3*allocateMemCapacity))
-             
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(allocateMemCapacity))])
-        self.assertEqual(allocated, True)
-        r = [CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertEqual(qr[0].value.value(), memCapacity - (4*allocateMemCapacity))
-        
-        # Deallocate all
-        for i in xrange(3,-1,-1):
-            # All four should succeed
-            self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(allocateMemCapacity))])
-            qr = [CF.DataType(id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb", value=any.to_any(None))]
-            qr = self.comp_obj.query(qr)
-            self.assertEqual(qr[0].value.value(), memCapacity - (i*allocateMemCapacity))
-    
-    def testLoadCapacityAllocation(self):
-        #######################################################################
-        # Launch the device
-        self.runGPP()
-        
-        #######################################################################
-        # Simulate regular component startup
-        # Verify that initialize nor configure throw errors
-        self.comp_obj.initialize()
-        configureProps = self.getPropertySet(kinds=("configure",), modes=("readwrite", "writeonly"), includeNil=False)
-        self.comp_obj.configure(configureProps)
-        
-        #######################################################################
-        # Test bogomips capacity
-        qr = [CF.DataType(id="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3", value=any.to_any(None)), # processor_cores
-              CF.DataType(id="DCE:3bf07b37-0c00-4e2a-8275-52bd4e391f07", value=any.to_any(None)), # loadCapacityPerCore
-              CF.DataType(id="DCE:28b23bc8-e4c0-421b-9c52-415a24715209", value=any.to_any(None)), # loadTotal
-              CF.DataType(id="DCE:6c000787-6fea-4765-8686-2e051e6c24b0", value=any.to_any(None)), # loadFree
-              CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(None)), # loadCapacity
-              CF.DataType(id="DCE:22a60339-b66e-4309-91ae-e9bfed6f0490", value=any.to_any(None)), # loadThreshold
-              CF.DataType(id="DCE:9da85ebc-6503-48e7-af36-b77c7ad0c2b4", value=any.to_any(None)), # loadAverage
-             ]
-        qr = self.comp_obj.query(qr)
-        processor_cores = qr[0].value.value()
-        loadCapacityPerCore = qr[1].value.value()
-        loadTotal = qr[2].value.value()
-        loadFree = qr[3].value.value()
-        loadCapacity = qr[4].value.value()
-        loadThreshold = qr[5].value.value()
-        loadAverage = dict([(x.id, x.value.value()) for x in qr[6].value.value()])
-        
-        self.assertAlmostEqual(loadCapacityPerCore, 1.0)
-        self.assertAlmostEqual(loadTotal, processor_cores*loadCapacityPerCore)
-        self.assertAlmostEqual(loadCapacity, loadTotal*(loadThreshold/100.0), places=0)
-        self.assertAlmostEqual(loadFree, loadTotal*(loadThreshold/100.0), places=0)
-        self.assertNotEqual(loadAverage['onemin'], 0.0)
-        self.assertNotEqual(loadAverage['fivemin'], 0.0)
-        self.assertNotEqual(loadAverage['fifteenmin'], 0.0)
-        self.assertNotEqual(loadAverage['onemin'], None)
-        self.assertNotEqual(loadAverage['fivemin'], None)
-        self.assertNotEqual(loadAverage['fifteenmin'], None)
-        
-        #=======================================================================
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3", value=any.to_any(processor_cores))])
-        self.assertEqual(allocated, True)
-        self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3", value=any.to_any(processor_cores))])
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:2df4cfe4-675c-41ec-9cc8-84dff2f468b3", value=any.to_any(processor_cores+1))])
-        self.assertEqual(allocated, False)
-         
-               
-        allocateLoadCapacity = loadCapacity / 4
-        for i in xrange(1,5):
-           # All four should succeed
-           allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(allocateLoadCapacity))])
-           self.assertEqual(allocated, True)
-           qr = [CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(None))]
-           qr = self.comp_obj.query(qr)
-           self.assertAlmostEqual(qr[0].value.value(), loadCapacity - (i*allocateLoadCapacity))
-           qr = [CF.DataType(id="DCE:6c000787-6fea-4765-8686-2e051e6c24b0", value=any.to_any(None))]
-           qr = self.comp_obj.query(qr)
-           self.assertAlmostEqual(qr[0].value.value(), loadTotal*(loadThreshold/100.0) - (i*allocateLoadCapacity))
-           
-        # The next allocation should fail
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(allocateLoadCapacity))])
-        self.assertEqual(allocated, False)
-        
-        # Deallocate and try again
-        self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(allocateLoadCapacity))])
-        qr = [CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertAlmostEqual(qr[0].value.value(), loadCapacity - (3*allocateLoadCapacity))
-             
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(allocateLoadCapacity))])
-        self.assertEqual(allocated, True)
-        r = [CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertAlmostEqual(qr[0].value.value(), loadCapacity - (4*allocateLoadCapacity))
-         
-        # Deallocate all
-        for i in xrange(3,-1,-1):
-           # All four should succeed
-           self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(allocateLoadCapacity))])
-           qr = [CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(None))]
-           qr = self.comp_obj.query(qr)
-           self.assertAlmostEqual(qr[0].value.value(), loadCapacity - (i*allocateLoadCapacity))
-           
-        # The next allocation should fail is "saftey valve is turned on"
-        #allocateLoadCapacity = (loadTotal - loadAverage['onemin']) + 1.0
-        #allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056", value=any.to_any(allocateLoadCapacity))])
-        #self.assertEqual(allocated, False)
-        
-        #=======================================================================
-            
-    def testDiskCapacityAllocation(self):
-        #######################################################################
-        # Launch the device
-        self.runGPP()
-        
-        #######################################################################
-        # Simulate regular component startup
-        # Verify that initialize nor configure throw errors
-        self.comp_obj.initialize()
-        configureProps = self.getPropertySet(kinds=("configure",), modes=("readwrite", "writeonly"), includeNil=False)
-        self.comp_obj.configure(configureProps)
-        
-        # Test allocation against BogoMipsPerCPU and processor_cores
-        #######################################################################
-        # Test disk capacity
-        qr = [CF.DataType(id="DCE:f5f78038-b7d4-4fcd-8294-344369c8a74f", value=any.to_any(None)), # fileSystems
-              CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(None)), # diskCapacity
-              CF.DataType(id="DCE:8c79aea8-479c-4b9b-98ab-efbb89305750", value=any.to_any(None)), # diskrateCapacity
-             ]
-        qr = self.comp_obj.query(qr)
-        
-        # Validate the fileSystems property
-        self.assertNotEqual(len(qr[0].value.value()), 0)
-        for fileSystemStruct in qr[0].value.value():
-            fileSystem = dict([(x.id, x.value.value()) for x in any.from_any(fileSystemStruct, True)])
-            # Don't actually validate the output against "df"..just check the structure
-            self.assert_(fileSystem.has_key("device"))
-            self.assertNotEqual(fileSystem["device"], None)
-            self.assertNotEqual(fileSystem["device"], "")
-            self.assert_(fileSystem.has_key("mount"))
-            self.assertNotEqual(fileSystem["mount"], None)
-            self.assertNotEqual(fileSystem["mount"], "")
-            self.assert_(fileSystem.has_key("total"))
-            self.assertNotEqual(fileSystem["total"], None)
-            self.assertNotEqual(fileSystem["total"], 0)
-            self.assert_(fileSystem.has_key("available"))
-            self.assertNotEqual(fileSystem["available"], None)
-            self.assertNotEqual(fileSystem["available"], 0)
-            self.assert_(fileSystem.has_key("used"))
-            self.assertNotEqual(fileSystem["used"], None)
-        
-        # TODO
-        diskrateCapacity = qr[2].value.value()
-        print "RRR", diskrateCapacity
-        
-        # Check that we can non-writable paths cause an allocation failure
-        diskCapacityRequestStruct = [CF.DataType(id='diskCapacityPath', value=any.to_any("/")), CF.DataType(id='diskCapacity', value=any.to_any(100))]
-        diskCapacityRequestStructSeq = [any.to_any(diskCapacityRequestStruct)]
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(diskCapacityRequestStructSeq))])
-        self.assertEqual(allocated, False)
-        
-        # Check that non-existant paths fail allocation
-        diskCapacityRequestStruct = [CF.DataType(id='diskCapacityPath', value=any.to_any("/tmp/certianly-not-there")), CF.DataType(id='diskCapacity', value=any.to_any(100))]
-        diskCapacityRequestStructSeq = [any.to_any(diskCapacityRequestStruct)]
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(diskCapacityRequestStructSeq))])
-        self.assertEqual(allocated, False)
-        
-        # Check that writable paths are allocatable (also check that $TMPDIR expansion works)
-        diskCapacityRequestStruct = [CF.DataType(id='diskCapacityPath', value=any.to_any("${TMPDIR}")), CF.DataType(id='diskCapacity', value=any.to_any(100))]
-        diskCapacityRequestStructSeq = [any.to_any(diskCapacityRequestStruct)]
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(diskCapacityRequestStructSeq))])
-        self.assertEqual(allocated, True)
-        
-        # Check that not having enough space is valid (do that by just picking a massive value)
-        diskCapacityRequestStruct = [CF.DataType(id='diskCapacityPath', value=any.to_any("${TMPDIR}")), CF.DataType(id='diskCapacity', value=any.to_any(int(100e6)))]
-        diskCapacityRequestStructSeq = [any.to_any(diskCapacityRequestStruct)]
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(diskCapacityRequestStructSeq))])
-        self.assertEqual(allocated, False)
-        
-        # Check that we can allocate from multiple directories at a time
-        diskCapacityRequestStruct1 = [CF.DataType(id='diskCapacityPath', value=any.to_any("${TMPDIR}")), CF.DataType(id='diskCapacity', value=any.to_any(100))]
-        diskCapacityRequestStruct2 = [CF.DataType(id='diskCapacityPath', value=any.to_any("/var/tmp")), CF.DataType(id='diskCapacity', value=any.to_any(100))]
-        diskCapacityRequestStructSeq = [any.to_any(diskCapacityRequestStruct1), any.to_any(diskCapacityRequestStruct2)]
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(diskCapacityRequestStructSeq))])
-        self.assertEqual(allocated, True)
-        
-        # Check that we can allocate from multiple directories at a time
-        diskCapacityRequestStruct1 = [CF.DataType(id='diskCapacityPath', value=any.to_any("${TMPDIR}")), CF.DataType(id='diskCapacity', value=any.to_any(100))]
-        diskCapacityRequestStruct2 = [CF.DataType(id='diskCapacityPath', value=any.to_any("/var/tmp")), CF.DataType(id='diskCapacity', value=any.to_any(int(100e6)))]
-        diskCapacityRequestStructSeq = [any.to_any(diskCapacityRequestStruct1), any.to_any(diskCapacityRequestStruct2)]
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:6786dd11-1e30-4910-aaac-a92b8b82614c", value=any.to_any(diskCapacityRequestStructSeq))])
-        self.assertEqual(allocated, False)
-    
-    def testMulticastNicCapacityAllocation(self):
-        mcastIface = self.promptUserInput("Specify a NIC to be used for the multicast allocation", None)
-        if mcastIface == None:
-            return
-        
-        #######################################################################
-        # Launch the device
-        self.runGPP({"DCE:4e416acc-3144-47eb-9e38-97f1d24f7700": mcastIface,
-                     "DCE:5a41c2d3-5b68-4530-b0c4-ae98c26c77ec": int(1000),
-                     "DCE:442d5014-2284-4f46-86ae-ce17e0749da0": int(100)})
-        
-        #######################################################################
-        # Simulate regular component startup
-        # Verify that initialize nor configure throw errors
-        self.comp_obj.initialize()
-        configureProps = self.getPropertySet(kinds=("configure",), modes=("readwrite", "writeonly"), includeNil=False)
-        self.comp_obj.configure(configureProps)
-        
-        # Test allocation against BogoMipsPerCPU and processor_cores
-        #######################################################################
-        # Test disk capacity
-        qr = [CF.DataType(id="DCE:4e416acc-3144-47eb-9e38-97f1d24f7700", value=any.to_any(None)), # mcastnicInterface
-              CF.DataType(id="DCE:5a41c2d3-5b68-4530-b0c4-ae98c26c77ec", value=any.to_any(None)), # mcastnicIngressTotal
-              CF.DataType(id="DCE:442d5014-2284-4f46-86ae-ce17e0749da0", value=any.to_any(None)), # mcastnicEgressTotal
-              CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(None)), # mcastnicIngressCapacity
-              CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(None)), # mcastnicEgressCapacity)
-              CF.DataType(id="DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1", value=any.to_any(None)), # mcastnicThreshold
-              CF.DataType(id="DCE:65544aad-4c73-451f-93de-d4d76984025a", value=any.to_any(None)), # mcastnicVLANs
-              CF.DataType(id="DCE:9190eb70-bd1e-4556-87ee-5a259dcfee39", value=any.to_any(None)), # hostName
-             ]
-        qr = self.comp_obj.query(qr)
-        
-        mcastnicInterface = qr[0].value.value()
-        mcastnicIngressTotal = qr[1].value.value()
-        mcastnicEgressTotal = qr[2].value.value()
-        mcastnicIngressCapacity = qr[3].value.value()
-        mcastnicEgressCapacity = qr[4].value.value()
-        mcastnicThreshold = qr[5].value.value()
-        mcastnicVLANs = qr[6].value.value()
-        hostName = qr[7].value.value()
-        
-        self.assertEqual(mcastnicInterface, mcastIface)
-        self.assertEqual(mcastnicIngressTotal, 1000)
-        self.assertEqual(mcastnicEgressTotal, 100)
-        self.assertEqual(hostName, socket.gethostname())
-        
-        self.assertNotEqual(len(mcastnicVLANs), 0)
-
-        self.assertAlmostEqual(mcastnicIngressCapacity, int(mcastnicIngressTotal*float(mcastnicThreshold/100.0)), places=2)
-        self.assertAlmostEqual(mcastnicEgressCapacity, int(mcastnicEgressTotal*float(mcastnicThreshold/100.0)), places=2)
-        
-        allocateIngressCapacity = mcastnicIngressCapacity / 4
-        for i in xrange(1,5):
-            # All four should succeed
-            allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(allocateIngressCapacity))])
-            self.assertEqual(allocated, True)
-            qr = [CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(None))]
-            qr = self.comp_obj.query(qr)
-            self.assertEqual(qr[0].value.value(), mcastnicIngressCapacity - (i*allocateIngressCapacity), msg="Failed on %s allocation" % i)
-            
-        # The next allocation should fail
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(allocateIngressCapacity))])
-        self.assertEqual(allocated, False)
-        
-        # Deallocate and try again
-        self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(allocateIngressCapacity))])
-        qr = [CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertEqual(qr[0].value.value(), mcastnicIngressCapacity - (3*allocateIngressCapacity))
-             
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(allocateIngressCapacity))])
-        self.assertEqual(allocated, True)
-        r = [CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertEqual(qr[0].value.value(), mcastnicIngressCapacity - (4*allocateIngressCapacity))
-        
-        # Deallocate all
-        for i in xrange(3,-1,-1):
-            # All four should succeed
-            self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(allocateIngressCapacity))])
-            qr = [CF.DataType(id="DCE:506102d6-04a9-4532-9420-a323d818ddec", value=any.to_any(None))]
-            qr = self.comp_obj.query(qr)
-            self.assertEqual(qr[0].value.value(), mcastnicIngressCapacity - (i*allocateIngressCapacity))
-            
-        allocateEgressCapacity = mcastnicEgressCapacity / 4
-        for i in xrange(1,5):
-            # All four should succeed
-            allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(allocateEgressCapacity))])
-            self.assertEqual(allocated, True)
-            qr = [CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(None))]
-            qr = self.comp_obj.query(qr)
-            self.assertEqual(qr[0].value.value(), mcastnicEgressCapacity - (i*allocateEgressCapacity))
-            
-        # The next allocation should fail
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(allocateEgressCapacity))])
-        self.assertEqual(allocated, False)
-        
-        # Deallocate and try again
-        self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(allocateEgressCapacity))])
-        qr = [CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertEqual(qr[0].value.value(), mcastnicEgressCapacity - (3*allocateEgressCapacity))
-             
-        allocated = self.comp_obj.allocateCapacity([CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(allocateEgressCapacity))])
-        self.assertEqual(allocated, True)
-        r = [CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(None))]
-        qr = self.comp_obj.query(qr)
-        self.assertEqual(qr[0].value.value(), mcastnicEgressCapacity - (4*allocateEgressCapacity))
-        
-        # Deallocate all
-        for i in xrange(3,-1,-1):
-            # All four should succeed
-            self.comp_obj.deallocateCapacity([CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(allocateEgressCapacity))])
-            qr = [CF.DataType(id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24", value=any.to_any(None))]
-            qr = self.comp_obj.query(qr)
-            self.assertEqual(qr[0].value.value(), mcastnicEgressCapacity - (i*allocateEgressCapacity))    
-    
-    
     # Create a test file system
     class FileStub(CF__POA.File):
         def __init__(self):
@@ -503,6 +154,10 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
     class FileSystemStub(CF__POA.FileSystem):
         def list(self, path):
             return [CF.FileSystem.FileInformationType(path[1:], CF.FileSystem.PLAIN, 100, [])]
+        
+        def exists(self, fileName):
+            tmp_fileName = './dat/'+fileName
+            return os.access(tmp_fileName, os.F_OK)
             
         def open(self, path, readonly):
             file = ComponentTests.FileStub()
@@ -520,15 +175,20 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.comp_obj.load(fs_stub_var, "/component_stub.py", CF.LoadableDevice.EXECUTABLE)
         self.assertEqual(os.path.isfile("component_stub.py"), True) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
         
-        pid = self.comp_obj.execute("/component_stub.py", [], [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any("DCE:00000000-0000-0000-0000-000000000000:waveform_1")), 
-                                                               CF.DataType(id="NAME_BINDING", value=any.to_any("MyComponent"))])
+        comp_id = "DCE:00000000-0000-0000-0000-000000000000:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid = self.comp_obj.execute("/component_stub.py", [], [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                                                               CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                                                               CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
         self.assertNotEqual(pid, 0)
         
         try:
             os.kill(pid, 0)
         except OSError:
             self.fail("Process failed to execute")
-        time.sleep(2)    
+        time.sleep(1)    
         self.comp_obj.terminate(pid)
         try:
             os.kill(pid, 0)
@@ -537,27 +197,60 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         else:
             self.fail("Process failed to terminate")
             
-        # Test both parameter and environment variable expansion
-        componentOutputLog = "${TMPDIR}/comp_@COMPONENT_IDENTIFIER@.log"
-        realLogPath = "/tmp/comp_DCE:00000000-0000-0000-0000-000000000000.log"
+    def testBusy(self):
+        self.runGPP()
+        self.comp_obj.initialize()
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
+        cores = multiprocessing.cpu_count()
+        procs = []
+        for core in range(cores):
+            procs.append(subprocess.Popen('./busy.py'))
+        time.sleep(1)
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.BUSY)
+        for proc in procs:
+            proc.kill()
+        time.sleep(1)
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
         
-        self.comp_obj.configure([CF.DataType(id="DCE:c80f6c5a-e3ea-4f57-b0aa-46b7efac3176", value=any.to_any(componentOutputLog))])
+        fs_stub = ComponentTests.FileSystemStub()
+        fs_stub_var = fs_stub._this()
+        
+        self.comp_obj.load(fs_stub_var, "/component_stub.py", CF.LoadableDevice.EXECUTABLE)
+        self.assertEqual(os.path.isfile("component_stub.py"), True) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
+        
+        comp_id = "DCE:00000000-0000-0000-0000-000000000000:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid = self.comp_obj.execute("/component_stub.py", [], [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                                                               CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                                                               CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
+        self.assertNotEqual(pid, 0)
+        time.sleep(1)
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.ACTIVE)
+        cores = multiprocessing.cpu_count()
+        procs = []
+        for core in range(cores):
+            procs.append(subprocess.Popen('./busy.py'))
+        time.sleep(1)
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.BUSY)
+        for proc in procs:
+            proc.kill()
+        time.sleep(1)
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.ACTIVE)
         
         try:
-            os.unlink(realLogPath)
+            os.kill(pid, 0)
+        except OSError:
+            self.fail("Process failed to execute")
+        time.sleep(1)    
+        self.comp_obj.terminate(pid)
+        try:
+            os.kill(pid, 0)
         except OSError:
             pass
-        self.assertEqual(os.path.isfile(realLogPath), False)
-        
-        pid = self.comp_obj.execute("/component_stub.py", [], [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any("DCE:00000000-0000-0000-0000-000000000000")), 
-                                                               CF.DataType(id="NAME_BINDING", value=any.to_any("MyComponent"))])
-        time.sleep(2)
-        self.assertEqual(os.path.isfile(realLogPath), True)
-        self.assertNotEqual(os.path.getsize(realLogPath), 0)
-        self.comp_obj.terminate(pid)
-        
-        self.comp_obj.unload("/component_stub.py")
-        self.assertEqual(os.path.isfile("component_stub.py"), False) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
+        else:
+            self.fail("Process failed to terminate")
         
     def testScreenExecute(self):
         self.runGPP({"DCE:218e612c-71a7-4a73-92b6-bf70959aec45": True})
@@ -575,15 +268,20 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.comp_obj.load(fs_stub_var, "/component_stub.py", CF.LoadableDevice.EXECUTABLE)
         self.assertEqual(os.path.isfile("component_stub.py"), True) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
         
-        pid = self.comp_obj.execute("/component_stub.py", [], [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any("DCE:00000000-0000-0000-0000-000000000000:waveform_1")), 
-                                                               CF.DataType(id="NAME_BINDING", value=any.to_any("MyComponent"))])
+        comp_id = "DCE:00000000-0000-0000-0000-000000000000:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid = self.comp_obj.execute("/component_stub.py", [], [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                                                               CF.DataType(id="NAME_BINDING", value=any.to_any("MyComponent")),CF.DataType(id="PROFILE_NAME", value=any.to_any("empty")),
+                                                               CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
         self.assertNotEqual(pid, 0)
         
         try:
             os.kill(pid, 0)
         except OSError:
             self.fail("Process failed to execute")
-        time.sleep(2)
+        time.sleep(1)
            
         if os.environ.has_key("SCREENDIR"):
             screendir = os.path.expandvars("${SCREENDIR}")
@@ -604,12 +302,15 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assertEqual(scrname, "waveform_1.MyComponent")
         
         self.comp_obj.terminate(pid)
+        time.sleep(1)
         try:
             os.kill(pid, 0)
         except OSError:
             pass
         else:
             self.fail("Process failed to terminate")
+        
+        output,status = commands.getstatusoutput('screen -wipe')
             
         screens = os.listdir(screendir)
         self.assertEqual(len(screens), 0)
@@ -678,32 +379,33 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         # Simulate regular component startup
         # Verify that initialize nor configure throw errors
         self.comp_obj.initialize()
-        configureProps = self.getPropertySet(kinds=("configure",), modes=("readwrite", "writeonly"), includeNil=False)
-        self.comp_obj.configure(configureProps)
-        
-        eventChannel = EventChannelStub()
-        eventPort = self.comp_obj.getPort("propEvent")
-        eventPort = eventPort._narrow(CF.Port)
-        eventPort.connectPort(eventChannel._this(), "eventChannel")
         
         orb = CORBA.ORB_init()
         obj_poa = orb.resolve_initial_references("RootPOA")
         poaManager = obj_poa._get_the_POAManager()
         poaManager.activate()
+
+        eventChannel = EventChannelStub()
+        eventChannelId = obj_poa.activate_object(eventChannel)
+        eventPort = self.comp_obj.getPort("propEvent")
+        eventPort = eventPort._narrow(CF.Port)
+        eventPort.connectPort(eventChannel._this(), "eventChannel")
+
+        #configureProps = self.getPropertySet(kinds=("configure",), modes=("readwrite", "writeonly"), includeNil=False)
+        configureProps = [CF.DataType(id='DCE:22a60339-b66e-4309-91ae-e9bfed6f0490',value=any.to_any(81))]
+        self.comp_obj.configure(configureProps)
         
         # Make sure the background status events are emitted
-        time.sleep(12)
+        time.sleep(0.5)
         
         self.assert_(eventChannel.actionQueue.qsize() > 0)
         
         event = eventChannel.actionQueue.get()
         event = any.from_any(event, keep_structs=True)
         event_dict = ossie.properties.props_to_dict(event.properties)
-        
-        # Check that all expected properties exist
-        eventPropIds = set([prop.id for prop in self.getPropertySet(kinds=("event",), includeNil=True)])
-        receivedEventIds = set(event_dict.keys())
-        self.assert_(eventPropIds ^ receivedEventIds == set([]))
+        self.assert_(self.comp_obj._get_identifier() == event.sourceId)
+        self.assert_('DCE:22a60339-b66e-4309-91ae-e9bfed6f0490' == event.properties[0].id)
+        self.assert_(81 == any.from_any(event.properties[0].value))
         
     # TODO Add additional tests here
     #
