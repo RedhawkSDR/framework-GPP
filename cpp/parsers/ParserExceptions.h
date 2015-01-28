@@ -17,15 +17,20 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#ifndef STATISTICS_H_
-#define STATISTICS_H_
+#ifndef PARSER_EXCEPTIONS_H_
+#define PARSER_EXCEPTIONS_H_
 
-class Statistics
+#include <stdexcept>
+
+namespace ParserExceptions
+{
+
+class ParseError : public std::runtime_error
 {
 public:
-    virtual ~Statistics(){}
-    
-    virtual void compute_statistics() = 0;
+	explicit ParseError(const std::string& arg): std::runtime_error(arg){};
 };
+
+}
 
 #endif

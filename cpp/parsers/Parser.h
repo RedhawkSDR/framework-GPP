@@ -17,15 +17,10 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#ifndef STATISTICS_H_
-#define STATISTICS_H_
+#ifndef PARSER_H_
+#define	PARSER_H_
 
-class Statistics
-{
-public:
-    virtual ~Statistics(){}
-    
-    virtual void compute_statistics() = 0;
-};
+#include "../utils/OverridableSingleton.h"
 
-#endif
+#endif	/* PARSER_H */
+
