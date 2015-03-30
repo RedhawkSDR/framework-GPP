@@ -17,7 +17,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-AC_INIT(GPP, 1.11.0)
+AC_INIT(GPP, 2.0.0)
 AM_INIT_AUTOMAKE(nostdinc)
 
 AC_PROG_CC

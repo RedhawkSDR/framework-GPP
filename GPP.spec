@@ -31,7 +31,7 @@ Prefix: %{_prefix}
 %define _infodir       %{_prefix}/info
 
 Name:           GPP
-Version:        1.11.0
+Version:        2.0.0
 Release:        1%{?dist}
 Summary:        REDHAWK GPP
 
@@ -43,13 +43,13 @@ Vendor:         REDHAWK
 
 BuildRoot:      %{_tmppath}/%{name}-root
 
-Requires:       redhawk >= 1.10
-BuildRequires:  redhawk-devel >= 1.10
+Requires:       redhawk >= 2.0
+BuildRequires:  redhawk-devel >= 2.0
 
 %package profile
 Summary:        Basic GPP profile
 Group:          Redhawk/Framework
-Prereq:         redhawk >= 1.10
+Prereq:         redhawk >= 2.0
 Prereq:         %{name} = %{version}-%{release}
 
 %description
@@ -115,7 +115,7 @@ echo "Configuring the Node..."
 
 
 %changelog
-* Fri Jan 9 2014 1.11.0-1
+* Fri Jan 9 2015 1.11.0-1
 - Update for cpp GPP
 
 * Fri May 24 2013 1.9.0-1

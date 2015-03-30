@@ -29,6 +29,11 @@
 #include "reports/SystemMonitorReporting.h"
 #include "reports/CpuThresholdMonitor.h"
 #include "NicFacade.h"
+#include "ossie/Events.h"
+
+#define PROCESSOR_NAME "DCE:fefb9c66-d14a-438d-ad59-2cfd1adb272b"
+#define OS_NAME "DCE:4a23ad60-0b25-4121-a630-68803a498f75"
+#define OS_VERSION "DCE:0f3a9a37-a342-43d8-9b7f-78dc6da74192"
 
 class ThresholdMonitor;
 class NicFacade;
@@ -86,9 +91,13 @@ class GPP_i : public GPP_base
         void calculateSystemMemoryLoading();
         std::vector<int> getPids();
         component_description_struct getComponentDescription(int pid);
-        void sendChildNotification(std::string dev_id, std::string comp_id, std::string app_id);
+        void sendChildNotification(const std::string &comp_id, const std::string &app_id);
         bool allocateCapacity_nic_allocation(const nic_allocation_struct &value);
         void deallocateCapacity_nic_allocation(const nic_allocation_struct &value);
+        void deallocateCapacity (const CF::Properties& capacities) throw (CF::Device::InvalidState, CF::Device::InvalidCapacity, CORBA::SystemException);
+        CORBA::Boolean allocateCapacity (const CF::Properties& capacities) throw (CF::Device::InvalidState, CF::Device::InvalidCapacity, CF::Device::InsufficientCapacity, CORBA::SystemException);
+        void releaseObject() throw (CORBA::SystemException, CF::LifeCycle::ReleaseError);
+        void process_ODM(const CORBA::Any &data);
 
     protected:
         void updateUsageState();
@@ -101,18 +110,20 @@ class GPP_i : public GPP_base
         system_monitor_struct system_monitor;
         void addPid(int pid, std::string appName, std::string identifier);
         void removePid(int pid);
-        void addReservation(component_description_struct component);
-        void removeReservation(component_description_struct component);
-        void shiftReservation(component_description_struct component);
-        void shiftReservationBack(component_description_struct component);
+        void addReservation(const component_description_struct &component);
+        void removeReservation(const component_description_struct &component);
+        void TableReservation(const component_description_struct &component);
+        void RestoreReservation(const component_description_struct &component);
         void reservedChanged(const float *oldValue, const float *newValue);
         void establishModifiedThresholds();
+
+
+        void sigchld_handler( int sig );
 
         std::vector<component_description_struct> reservations;
         std::vector<component_description_struct> tabled_reservations;
         std::map<int, component_description_struct> pids;
         boost::mutex pidLock;
-        std::map<std::string, CF::Application_var> applications;
 
         StateSequence states;
         StatisticsSequence statistics;
@@ -123,6 +134,16 @@ class GPP_i : public GPP_base
         thresholds_struct modified_thresholds;
         
         float idle_capacity_modifier;
+
+
+        boost::posix_time::ptime   time_mark;
+        
+        redhawk::events::SubscriberPtr odm_consumer;
+        redhawk::events::ManagerPtr mymgr;
+        
+
+ private:
+        void _init();
 };
 
 #endif // GPP_IMPL_H
