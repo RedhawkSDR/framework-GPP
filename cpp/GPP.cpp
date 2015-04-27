@@ -210,16 +210,21 @@ void GPP_i::initialize() throw (CF::LifeCycle::InitializeError, CORBA::SystemExc
     time_mark = boost::posix_time::microsec_clock::local_time();
     GPP_base::start();
     GPP_base::initialize();
-    mymgr = redhawk::events::Manager::GetManager(this);
-    odm_consumer = mymgr->Subscriber("ODM_Channel");
-    odm_consumer->setDataArrivedListener(this, &GPP_i::process_ODM);
+    try {
+        mymgr = redhawk::events::Manager::GetManager(this);
+        odm_consumer = mymgr->Subscriber("ODM_Channel");
+        odm_consumer->setDataArrivedListener(this, &GPP_i::process_ODM);
+    } catch ( ... ) {
+        mymgr = boost::shared_ptr<redhawk::events::Manager>();
+        odm_consumer = boost::shared_ptr<redhawk::events::Subscriber>();
+    }
 }
 
 void GPP_i::process_ODM(const CORBA::Any &data) {
     boost::mutex::scoped_lock lock(pidLock);
-    ExtendedEvent::ResourceStateChangeEventType* app_state_change;
+    const ExtendedEvent::ResourceStateChangeEventType* app_state_change;
     if (data >>= app_state_change) {
-        std::string appName = ossie::corba::returnString(app_state_change->sourceName);
+        std::string appName(app_state_change->sourceName);
         if (app_state_change->stateChangeTo == ExtendedEvent::STARTED) {
             for (std::vector<component_description_struct>::iterator it=reservations.begin();it!=reservations.end();it++) {
                 if ((*it).appName == appName) {
