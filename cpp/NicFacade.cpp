@@ -29,6 +29,12 @@
 
 #include <net/if.h>
 
+#if BOOST_FILESYSTEM_VERSION < 3
+#define BOOST_PATH_STRING(x) (x)
+#else
+#define BOOST_PATH_STRING(x) (x).string()
+#endif
+
 const int MBIT_PER_MB = 8;
 const double MBIT_PER_BIT = 1e-6;
 
@@ -86,11 +92,13 @@ NicFacade::poll_nic_interfaces() const
     {
 		if(boost::filesystem::is_directory(iter->status())) 
         {
-			boost::filesystem::path test_file( iter->string() + "/statistics/rx_bytes" );
+            std::ostringstream tmp;
+            tmp << BOOST_PATH_STRING(iter->path());
+			boost::filesystem::path test_file( tmp.str() + "/statistics/rx_bytes" );
 
 			if(boost::filesystem::is_regular_file(test_file)) 
             {
-                interfaces.push_back( iter->filename() );
+                interfaces.push_back( BOOST_PATH_STRING(iter->path().filename()) );
             }
         }
     }

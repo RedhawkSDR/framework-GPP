@@ -78,9 +78,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         #######################################################################
         # Launch the device
         # Use values that could not possibly be true so we can ensure proper behavior
-        self.runGPP({"DCE:4a23ad60-0b25-4121-a630-68803a498f75": "Windows", # os_name
-                     "DCE:0f3a9a37-a342-43d8-9b7f-78dc6da74192": "3.1.1", # os_version
-                     "DCE:fefb9c66-d14a-438d-ad59-2cfd1adb272b": "arm"}) # processor_name
+        self.runGPP() # processor_name
         
         #######################################################################
         # Simulate regular component startup
@@ -102,17 +100,11 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
             self.assertEquals(props.has_key(expectedProp.id), True)
         
         qr = [CF.DataType(id="DCE:9190eb70-bd1e-4556-87ee-5a259dcfee39", value=any.to_any(None)), # hostName
-              CF.DataType(id="DCE:cdc5ee18-7ceb-4ae6-bf4c-31f983179b4d", value=any.to_any(None)), # DeviceKind
-              CF.DataType(id="DCE:4a23ad60-0b25-4121-a630-68803a498f75", value=any.to_any(None)), # os_name
-              CF.DataType(id="DCE:0f3a9a37-a342-43d8-9b7f-78dc6da74192", value=any.to_any(None)), # os_version
-              CF.DataType(id="DCE:fefb9c66-d14a-438d-ad59-2cfd1adb272b", value=any.to_any(None)), # processor_name
+              CF.DataType(id="DCE:cdc5ee18-7ceb-4ae6-bf4c-31f983179b4d", value=any.to_any(None)) # DeviceKind
              ]
         qr = self.comp_obj.query(qr)
         self.assertEqual(qr[0].value.value(), socket.gethostname())
         self.assertEqual(qr[1].value.value(), "GPP")
-        self.assertEqual(qr[2].value.value(), "Windows")
-        self.assertEqual(qr[3].value.value(), "3.1.1")
-        self.assertEqual(qr[4].value.value(), "arm")
         
         #######################################################################
         # Verify that all expected ports are available

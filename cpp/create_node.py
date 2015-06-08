@@ -26,10 +26,10 @@ from ossie.utils.model import _uuidgen as uuidgen
 class ConfigurationError(StandardError):
     pass
 
-class NodeConfig(object):
+class CreateNode(object):
     def __init__(self, options, cmdlineProps):
         # Basic setup
-        self._log = logging.getLogger('NodeConfig')
+        self._log = logging.getLogger('CreateNode')
         self.localfile_nodeprefix = '/mgr'
         self.options = options
         self.cmdlineProps = cmdlineProps
@@ -74,7 +74,6 @@ class NodeConfig(object):
             self._log.debug("Registering...")
         self._gather_system_information()
         self._createDeviceManagerProfile()
-        self._updateGppProfile()
     
     def unregister(self):
         if not self.options.silent:
@@ -99,8 +98,6 @@ class NodeConfig(object):
         self._gather_python_information()
         self._gather_xmidas_information()
         self._gather_nextmidas_information()
-        self._gather_mcastnic_information()
-        self._gather_diskrate_information()
         
         # Output some debug information
         if not self.options.silent:
@@ -211,142 +208,6 @@ class NodeConfig(object):
         
     def _ver2rel(self, ver):
         return float(ver[0:1]) + float(ver[2:3])*0.1 + float(ver[4:5])*0.000001
-
-    def _gather_mcastnic_information(self):
-        if not self.options.silent:
-            self._log.debug("Checking nic capacity...")
-        
-        # If the multicast NIC isn't specified, attempt to locate using the default route 
-        if not self.options.mcastnic:
-            text = commands.getoutput("/sbin/route -n").split("\n")
-            for line in text[2:]:
-                fields = [x.strip() for x in line.split()]
-                if fields[0] == "224.0.0.0":
-                    self.options.mcastnic = fields[7]
-                    if self.options.mcastnic.find(".") != -1:
-                        self.options.mcastnic = self.options.mcastnic.split(".")[0]
-                    if not self.options.silent:
-                        self._log.info("Auto-detected %s as multicast nic", self.options.mcastnic)
-                    break
-            
-        if not self.options.mcastnic:
-            if not self.options.silent:
-                self._log.warn("You must provide a multicast NIC port in order to have NIC capacity managment")
-                return
-        self.props["mcastnicInterface"] = self.options.mcastnic
-        testInterface = self.options.mcastnic
-
-        # Check if the interface is bonded and adjust accordingly by getting the active enslaved interface
-        bondpath = '/sys/class/net/%s/bonding/active_slave' % testInterface
-        if os.path.exists(bondpath):
-            try:
-                bondfile = open(bondpath, 'r')
-                bondintf = bondfile.readline(100)
-                testInterface = bondintf.strip()
-                if not self.options.silent:
-                    self._log.debug("Ingress/egress will be calculated using the active slave interface '%s' of bonded interface '%s'" % (testInterface, self.options.mcastnic))
-                bondfile.close()
-            except:
-                if not self.options.silent:
-                    self._log.warn("Unable to read information for bonded multicast interface")
-                return
-        
-        # Must be root to query the interface
-        if os.getuid() != 0:
-            if not self.options.silent:
-                self._log.warn("You must run nodeconfig.py as root in order to get a calculated nic capacity for devices")
-            self.props["mcastnicIngressTotal"] = 0
-            self.props["mcastnicEgressTotal"] = 0
-            return
-        
-        (exitstatus, ethtool_info) = commands.getstatusoutput("/sbin/ethtool " + testInterface)
-        if exitstatus != 0:
-            if not self.options.silent:
-                self._log.debug("Invalid multicast NIC provided.")
-            return
-
-        speed = ''
-        link = ''
-        duplex = 'Full'
-        for i in ethtool_info.splitlines():
-            if 'Speed:' in i:
-                speed = i.strip().lstrip('Speed: ').strip()
-            elif 'Link detected:' in i:
-                link = i.strip().lstrip('Link detected: ').strip()
-            elif 'Duplex:' in i:
-                duplex = i.strip().lstrip('Duplex: ').strip()
-
-        # check link status
-        link = link.upper()
-        if link == 'YES':
-            link = True
-        elif link == 'NO':
-            link = False
-            if not self.options.silent:
-                self._log.warn("Multicast NIC not up.")
-        else:
-            link = False
-            if not self.options.silent:
-                self._log.warn("Unable to determine if multicast NIC is up")
-
-        # get speed
-        speed = speed.rstrip('Mb/s')
-        if speed.isdigit():
-            speed = int(speed)
-        else:
-            speed = 0
-
-        self.props["mcastnicIngressTotal"] = speed
-        self.props["mcastnicEgressTotal"] = speed
-        if duplex != "Full":
-            if not self.options.silent:
-                self._log.debug("Interface is half-duplex.")
-            self.props["mcastnicIngressTotal"] = speed / 2
-            self.props["mcastnicEgressTotal"] = speed / 2
-        
-
-    
-    def _gather_diskrate_information(self):
-        if os.getuid() != 0:
-            if not self.options.silent:
-                self._log.debug("You must run dynamicnode.py as root in order to get a calculated disk rate for devices")
-            return
-        
-        # find the right disk
-        fileSystems = self._get_fileSystems()
-        self.props['diskrateTotal'] = []
-        for fileSystem in fileSystems:
-            dev = fileSystem[0]
-            # Ignore certian device types
-            if dev in ("tmpfs",):
-                continue
-            if not os.path.exists(dev):
-                if not self.options.silent:
-                    self._log.debug("Skipping filesystem '%s' which does not appear to be a physical disk" % dev)
-                continue
-            
-            if not self.options.silent:
-                self._log.debug("Checking disk rate for %s ...", dev)
-            hdparminfo = commands.getoutput("/sbin/hdparm -t " + dev).splitlines()
-            dataline = None
-            for i in hdparminfo:
-                if (' = ' in i) and ('MB/sec' in i):
-                    dataline = i
-                    break
-            if dataline == None:
-                if not self.options.silent:
-                    self._log.debug("problems running hdparm for disk rate test")
-                return 0
-    
-            data = dataline.split()
-            eidx = data.index('=')
-            midx = data.index('MB/sec')
-            if midx <= eidx:
-                if not self.options.silent:
-                    self._log.debug("problems running hdparm for disk rate test")
-                return 0
-            rate = data[eidx+1]
-            self.props['diskrateTotal'].append({"diskrateTotalDevice": dev, "diskrateTotal": rate})
     
     def _get_fileSystems(self):
         """Use df to provide the current status for all file systems on this machine."""
@@ -397,7 +258,7 @@ class NodeConfig(object):
         if self.options.noevents:
             connections = []
         else:
-            connections = [{'usesport':{'id':'propEvent', 'refid':self.uuids["componentinstantiation"]}, 'findby':{'type':'eventchannel', 'name':'GPPChannel'}}]
+            connections = [{'usesport':{'id':'propEvent', 'refid':self.uuids["componentinstantiation"]}, 'findby':{'type':'eventchannel', 'name':'GPP_Channel'}}]
 
         #####################
         # DeviceManager files
@@ -453,71 +314,6 @@ class NodeConfig(object):
         dcd_out.write(parsers.parserconfig.getVersionXML())
         _dcd.export(dcd_out,0)
         dcd_out.close()
-        
-    def _updateGppProfile(self):
-        #####################
-        # GPP files
-        #####################
-        
-        if not self.options.silent:
-            self._log.debug("Creating GPP profile <" + self.gpp_path + ">")
-            
-        if not self.options.inplace:
-            if not os.path.exists(self.gpp_path):
-                os.mkdir(self.gpp_path)
-            for f in self.gpp_templates.values():
-                shutil.copy(f, self.gpp_path)
-                
-        self._updateGppSpd()
-        self._updateGppPrf()
-    
-    def _updateGppSpd(self):
-        # update the spd file
-        spdpath = os.path.join(self.gpp_path, 'GPP.spd.xml')
-        _spd = parsers.SPDParser.parse(spdpath)
-        _spd.set_id(self.uuids["componentsoftpkg"])
-        _spd.implementation[0].set_id(self.uuids["componentimplementation"])
-
-        # update the GPP code entry if this wasn't an inplace update
-        if not self.options.inplace:
-            code = _spd.get_implementation()[0].get_code()
-            new_entrypoint = os.path.normpath(os.path.join(self.options.gpppath, code.get_entrypoint()))
-            new_localfile = os.path.normpath(os.path.join(self.options.gpppath, code.get_localfile().get_name()))
-            code.set_entrypoint(new_entrypoint)
-            code.get_localfile().set_name(new_localfile)
-            
-        spd_out = open(spdpath, 'w')
-        spd_out.write(parsers.parserconfig.getVersionXML())
-        _spd.export(spd_out,0, name_='softpkg')
-        spd_out.close()
-        
-    def _updateGppPrf(self):
-        # generate the prf file
-        prfpath = os.path.join(self.gpp_path, 'GPP.prf.xml')
-        _prf = parsers.PRFParser.parse(prfpath)
-        
-        # For simple properties, we allow adding in a value either:
-        #   1) By command-line param
-        #   2) By values we've determined from our nodeconfig tests
-        for simple in _prf.get_simple():
-            if simple.get_name() in self.cmdlineProps:
-                simple.set_value(str(self.cmdlineProps[simple.get_name()]))
-            elif simple.get_name() in self.props:
-                simple.set_value(str(self.props[simple.get_name()]))
-
-        for structseq in _prf.get_structsequence():
-            if structseq.get_name() in self.props:
-                for values in self.props[structseq.get_name()]:
-                    sv = parsers.PRFParser.structValue()
-                    for field_id, field_val in values.items():
-                        sv.add_simpleref(parsers.PRFParser.simpleRef(refid=field_id, value=str(field_val))) 
-                    structseq.add_structvalue(sv)
-                               
-        prf_out = open(prfpath, 'w')
-        prf_out.write(parsers.parserconfig.getVersionXML())
-        _prf.export(prf_out,0)
-        prf_out.close()
-        
 
         
 ###########################
@@ -531,18 +327,16 @@ if __name__ == "__main__":
     from optparse import OptionParser
     parser = OptionParser()
     parser.usage = "%s [options] [simple_prop1 simple_value1]..."
-    parser.add_option("--domainname", dest="domainname", default=None,
-                      help="must give a domainname")
+    parser.add_option("--domainname", dest="domainname", default="REDHAWK_DEV",
+                      help="domain that the Device Manager connects with")
     parser.add_option("--sdrroot", dest="sdrroot", default=os.path.expandvars("${SDRROOT}"),
                       help="path to the sdrroot; if none is given, ${SDRROOT} is used.")
     parser.add_option("--nodename", dest="nodename", default="DevMgr_%s" % socket.gethostname(),
                       help="desired nodename, if none is given DevMgr_${HOST} is used")
-    parser.add_option("--inplace", dest="inplace", default=False, action="store_true",
-                      help="update the GPP profile in-place; default is to create a GPP configuration in the node folder")
+    parser.add_option("--inplace", dest="inplace", default=True, action="store_true",
+                      help="update the GPP profile in-place in its directory (i.e.: --gpppath); setting this to false modifies the GPP configuration as a subdirectory in the node directory")
     parser.add_option("--gpppath", dest="gpppath", default="/devices/GPP",
                       help="The device manager file system absolute path to the GPP, default '/devices/GPP'")
-    parser.add_option("--mcastnic", dest="mcastnic", default='',
-                      help="Specify the default mcastnic interfaces (i.e. 'eth1'); if none is given the route associated with default multicast is used")
     parser.add_option("--disableevents", dest="noevents", default=False, action="store_true",
                       help="Disable event channel registration")
     parser.add_option("--silent", dest="silent", default=False, action="store_true",
@@ -560,7 +354,7 @@ if __name__ == "__main__":
         logging.getLogger().setLevel(logging.DEBUG)
 
     # grab tmp logger until class is created
-    _log = logging.getLogger('NodeConfig')
+    _log = logging.getLogger('CreateNode')
 
     if len(args) % 2 == 1:
         _log.error("Invalid command line arguments - properties must be specified with values")
@@ -570,9 +364,9 @@ if __name__ == "__main__":
         if i % 2 == 0:
             cmdlineProps[args[i]] = args[i + 1]
 
-    # create instance of NodeConfig
+    # create instance of CreateNode
     try:
-        dn = NodeConfig(options, cmdlineProps)
+        dn = CreateNode(options, cmdlineProps)
         if options.clean:
             dn.unregister()
         dn.register()

@@ -38,15 +38,39 @@ reporting_data_(reporting_data)
 void
 SystemMonitorReporting::report()
 {
-	struct sysinfo info;
-	sysinfo(&info);
+    std::ifstream meminfo("/proc/meminfo");
+    if (meminfo.is_open()) {
+        bool done = false;
+        std::string line;
+        float total_memory = 0;
+        float committed_memory = 0;
+        while ((not done) and (getline(meminfo, line))) {
+            if (line.find("CommitLimit:") != std::string::npos) {
+                std::istringstream iss(line);
+                std::string sub;
+                iss>>sub;
+                iss>>total_memory;
+            }
+            if (line.find("Committed_AS:") != std::string::npos) {
+                std::istringstream iss(line);
+                std::string sub;
+                iss>>sub;
+                iss>>committed_memory;
+            }
+        }
+        reporting_data_.physical_memory_free = (total_memory - committed_memory)/1024;
+    } else {
+        struct sysinfo info;
+        sysinfo(&info);
+        reporting_data_.physical_memory_free = info.freeram / BYTES_PER_MEGABYTE * info.mem_unit;
+    }
 
 	//reporting_data_.virtual_memory_total = (info.totalram+info.totalswap) / BYTES_PER_MEGABYTE * info.mem_unit;
 	//reporting_data_.virtual_memory_free = (info.freeram+info.freeswap) / BYTES_PER_MEGABYTE * info.mem_unit;
 	//reporting_data_.virtual_memory_used = reporting_data_.virtual_memory_total-reporting_data_.virtual_memory_free;
 	//reporting_data_.virtual_memory_percent = (double)reporting_data_.virtual_memory_used / (double)reporting_data_.virtual_memory_total * 100.;
 	//reporting_data_.physical_memory_total = info.totalram / BYTES_PER_MEGABYTE * info.mem_unit;
-	reporting_data_.physical_memory_free = info.freeram / BYTES_PER_MEGABYTE * info.mem_unit;
+	//reporting_data_.physical_memory_free = info.freeram / BYTES_PER_MEGABYTE * info.mem_unit;
 	//reporting_data_.physical_memory_used = reporting_data_.physical_memory_total-reporting_data_.physical_memory_free;
 	//reporting_data_.physical_memory_percent = (double)reporting_data_.physical_memory_used / (double)reporting_data_.physical_memory_total * 100.;
 	//reporting_data_.user_cpu_percent = cpu_usage_accumulator_->get_user_percent();

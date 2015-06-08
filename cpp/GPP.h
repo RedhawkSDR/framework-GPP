@@ -124,6 +124,8 @@ class GPP_i : public GPP_base
         std::vector<component_description_struct> tabled_reservations;
         std::map<int, component_description_struct> pids;
         boost::mutex pidLock;
+        
+        double loadCapacity_counter;
 
         StateSequence states;
         StatisticsSequence statistics;

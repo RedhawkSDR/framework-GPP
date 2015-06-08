@@ -20,7 +20,7 @@
 ossieName = GPP
 bindir = $(prefix)/dev/devices/GPP/cpp/
 bin_PROGRAMS = GPP
-dist_bin_SCRIPTS = nodeconfig.py devconfig.py
+dist_bin_SCRIPTS = create_node.py devconfig.py
 
 xmldir = $(prefix)/dev/devices/GPP/
 dist_xml_DATA = ../GPP.scd.xml ../GPP.prf.xml ../GPP.spd.xml
@@ -47,6 +47,6 @@ install-data-hook:
 # you wish to manually control these options.
 include $(srcdir)/Makefile.am.ide
 GPP_SOURCES = $(redhawk_SOURCES_auto)
-GPP_LDADD = $(PROJECTDEPS_LIBS) $(BOOST_LDFLAGS) $(BOOST_THREAD_LIB) $(BOOST_REGEX_LIB) $(BOOST_SYSTEM_LIB) $(INTERFACEDEPS_LIBS) $(redhawk_LDADD_auto)
+GPP_LDADD = $(PROJECTDEPS_LIBS) $(BOOST_LDFLAGS) $(BOOST_THREAD_LIB) $(BOOST_REGEX_LIB) $(BOOST_FILESYSTEM_LIB) $(BOOST_SYSTEM_LIB) $(INTERFACEDEPS_LIBS) $(redhawk_LDADD_auto)
 GPP_CXXFLAGS = -Wall $(PROJECTDEPS_CFLAGS) $(BOOST_CPPFLAGS) $(INTERFACEDEPS_CFLAGS) $(redhawk_INCLUDES_auto)
 GPP_LDFLAGS = -Wall $(redhawk_LDFLAGS_auto)

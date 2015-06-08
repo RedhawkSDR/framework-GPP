@@ -32,7 +32,7 @@ Prefix: %{_prefix}
 
 Name:           GPP
 Version:        2.0.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        REDHAWK GPP
 
 Group:          Applications/Engineering
@@ -49,8 +49,9 @@ BuildRequires:  redhawk-devel >= 2.0
 %package profile
 Summary:        Basic GPP profile
 Group:          Redhawk/Framework
-Prereq:         redhawk >= 2.0
-Prereq:         %{name} = %{version}-%{release}
+Requires(pre):  redhawk >= 2.0
+Requires(pre):  redhawk-sdrroot-dev-mgr >= 2.0
+Requires(pre):  %{name} = %{version}-%{release}
 
 %description
 A device representing a general purpose processor
@@ -105,13 +106,15 @@ rm -rf $RPM_BUILD_ROOT
 
 # configure the gpp and the dcd
 echo "Configuring the Node..."
-%{_prefix}/dev/devices/%{name}/cpp/nodeconfig.py --silent \
+# nodeconfig was previously run as root; correct permissions on these directories
+find %{_prefix}/dev/nodes -type d -name 'DevMgr_*' -uid 0 -exec chown -R redhawk. {} \;
+/sbin/runuser redhawk -s /bin/bash -c '%{_prefix}/dev/devices/%{name}/cpp/create_node.py --silent \
     --clean \
     --gpppath=/devices/%{name} \
     --disableevents \
     --domainname=REDHAWK_DEV \
     --sdrroot=%{_prefix} \
-    --inplace
+    --inplace'
 
 
 %changelog

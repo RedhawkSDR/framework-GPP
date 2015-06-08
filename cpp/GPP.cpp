@@ -120,6 +120,7 @@ void GPP_i::_init() {
   err = sigaddset(&sigset, SIGCHLD);
   /* We must block the signals in order for signalfd to receive them */
   err = sigprocmask(SIG_BLOCK, &sigset, NULL);
+  assert(err == 0);
   /* Create the signalfd */
   sig_fd = signalfd(-1, &sigset,0);
   assert(sig_fd != -1);
@@ -179,6 +180,7 @@ void GPP_i::initialize() throw (CF::LifeCycle::InitializeError, CORBA::SystemExc
         this->os_name = _uts.sysname;
         this->os_version = _uts.release;
     }
+    this->loadCapacity_counter = 0;
     
     addPropertyChangeListener("reserved_capacity_per_component", this, &GPP_i::reservedChanged);
     this->idle_capacity_modifier = 100.0 * this->reserved_capacity_per_component/((float)this->processor_cores);
@@ -226,17 +228,27 @@ void GPP_i::process_ODM(const CORBA::Any &data) {
     if (data >>= app_state_change) {
         std::string appName(app_state_change->sourceName);
         if (app_state_change->stateChangeTo == ExtendedEvent::STARTED) {
-            for (std::vector<component_description_struct>::iterator it=reservations.begin();it!=reservations.end();it++) {
-                if ((*it).appName == appName) {
-                    this->TableReservation(*it);
-                    break;
+            bool found_hit = true;
+            while (found_hit) {
+                found_hit = false;
+                for (std::vector<component_description_struct>::iterator it=reservations.begin();it!=reservations.end();it++) {
+                    if ((*it).appName == appName) {
+                        this->TableReservation(*it);
+                        found_hit = true;
+                        break;
+                    }
                 }
             }
         } else if (app_state_change->stateChangeTo == ExtendedEvent::STOPPED) {
-            for (std::vector<component_description_struct>::iterator it=tabled_reservations.begin();it!=tabled_reservations.end();it++) {
-                if ((*it).appName == appName) {
-                    this->RestoreReservation(*it);
-                    break;
+            bool found_hit = true;
+            while (found_hit) {
+                found_hit = false;
+                for (std::vector<component_description_struct>::iterator it=tabled_reservations.begin();it!=tabled_reservations.end();it++) {
+                    if ((*it).appName == appName) {
+                        this->RestoreReservation(*it);
+                        found_hit = true;
+                        break;
+                    }
                 }
             }
         }
@@ -244,7 +256,7 @@ void GPP_i::process_ODM(const CORBA::Any &data) {
 }
 
 void GPP_i::releaseObject() throw (CORBA::SystemException, CF::LifeCycle::ReleaseError) {
-    mymgr->Terminate();
+    if ( odm_consumer ) odm_consumer.reset();
     GPP_base::releaseObject();
 }
 
@@ -302,20 +314,6 @@ void GPP_i::deallocateCapacity_nic_allocation(const nic_allocation_struct &alloc
 
 void GPP_i::deallocateCapacity (const CF::Properties& capacities) throw (CF::Device::InvalidState, CF::Device::InvalidCapacity, CORBA::SystemException)
 {
-    /*CF::Properties tmp_props = capacities;
-    redhawk::PropertyMap& tmp_params = redhawk::PropertyMap::cast(tmp_props);
-    if (tmp_params.find(PROCESSOR_NAME) != tmp_params.end()) {
-        if (tmp_params[PROCESSOR_NAME].toString() != this->processor_name)
-            return;
-    }
-    if (tmp_params.find(OS_NAME) != tmp_params.end()) {
-        if (tmp_params[OS_NAME].toString() != this->os_name)
-            return;
-    }
-    if (tmp_params.find(OS_VERSION) != tmp_params.end()) {
-        if (tmp_params[OS_VERSION].toString() != this->os_version)
-            return;
-    }*/
     GPP_base::deallocateCapacity(capacities);
 }
 CORBA::Boolean GPP_i::allocateCapacity (const CF::Properties& capacities) throw (CF::Device::InvalidState, CF::Device::InvalidCapacity, CF::Device::InsufficientCapacity, CORBA::SystemException)
@@ -403,17 +401,28 @@ void GPP_i::sendChildNotification(const std::string &comp_id, const std::string 
 }
 
 bool GPP_i::allocate_loadCapacity(const double &value) {
-    std::ifstream file("/proc/loadavg");
+    if (this->isBusy())
+        return false;
+    
+    /*std::ifstream file("/proc/loadavg");
     double current_load;
     std::vector<std::string> items;
-    file>>current_load;
-    if ((current_load+value) > (this->processor_cores * this->loadCapacityPerCore * (this->loadThreshold / 100.0)))
+    file>>current_load;*/
+    
+    this->loadCapacity_counter += value;
+    this->updateThresholdMonitors();
+    this->updateUsageState();
+    
+    if (this->isBusy())
         return false;
     
     return true;
 }
 
 void GPP_i::deallocate_loadCapacity(const double &value) {
+    this->loadCapacity_counter -= value;
+    this->updateThresholdMonitors();
+    this->updateUsageState();
     return;
 }
 
@@ -555,7 +564,7 @@ void GPP_i::updateThresholdMonitors()
 void GPP_i::establishModifiedThresholds()
 {
     boost::mutex::scoped_lock lock(pidLock);
-    this->modified_thresholds.cpu_idle = this->thresholds.cpu_idle + (this->idle_capacity_modifier * this->reservations.size());
+    this->modified_thresholds.cpu_idle = this->thresholds.cpu_idle + (this->idle_capacity_modifier * this->reservations.size()) + this->loadCapacity_counter;
 }
 
 void GPP_i::calculateSystemMemoryLoading() {
@@ -624,8 +633,8 @@ int GPP_i::serviceFunction()
 
   boost::posix_time::ptime now = boost::posix_time::microsec_clock::local_time();
   boost::posix_time::time_duration dur = now -time_mark;
-  if ( dur.total_milliseconds() < 1000 ) {
-    // only update every second
+  if ( dur.total_milliseconds() < 500 ) {
+    // only update every half second
     return NOOP;
   }
   
