@@ -21,7 +21,6 @@
 #define SYMLINK_READER_H_
 
 #include "OverridableSingleton.h"
-
 #include <string>
 
 class SymlinkReader : public OverridableSingleton<SymlinkReader>

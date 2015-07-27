@@ -19,15 +19,17 @@
  */
 #ifndef NIC_ALLOCATOR_H_
 #define NIC_ALLOCATOR_H_
-
-#include "struct_props.h"
-
-#include <boost/function.hpp>
-
 #include <map>
 #include <stdexcept>
+#include <boost/function.hpp>
+#include <boost/shared_ptr.hpp>
+#include "struct_props.h"
+#include "states/NicState.h"
 
-class NicState;
+class NicAllocator;
+
+typedef boost::shared_ptr < NicAllocator > NicAllocatorPtr;
+
 
 struct DeviceThroughputCapacity
 {
@@ -51,7 +53,7 @@ public:
     };
     
 public:
-    typedef std::map<std::string, boost::shared_ptr<NicState> > AllocatableNics;
+    typedef std::map<std::string, NicStatePtr >  AllocatableNics;
     typedef std::map<std::string, nic_allocation_struct> Allocations;
     typedef std::map<std::string, DeviceThroughputCapacity> DeviceThroughputCapacities;
     typedef boost::function< double (const std::string&) > CurrentThroughputFunction;
@@ -92,5 +94,7 @@ private:
     Allocations allocations_;
     DeviceThroughputCapacities device_throughput_capacities_;
 };
+
+
 
 #endif

@@ -196,7 +196,7 @@ Optional</description>
     <kind kindtype="allocation"/>
     <action type="external"/>
   </simple>
-  <simple id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb" mode="readwrite" name="memCapacity" type="long" complex="false">
+  <simple id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb" mode="readwrite" name="memCapacity" type="longlong" complex="false">
     <description>Amount of RAM in the GPP not allocated to an application</description>
     <units>MiB</units>
     <kind kindtype="allocation"/>
@@ -269,18 +269,36 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     <simple id="cpu_idle" type="float">
       <value>10</value>
       <units>%</units>
+      <kind kindtype="property"/>
+      <action type="external"/>
     </simple>
-    <simple id="mem_free" mode="readwrite" type="long">
+    <simple id="mem_free" mode="readwrite" type="longlong">
       <value>100</value>
       <units>MB</units>
-      <kind kindtype="configure"/>
+      <kind kindtype="property"/>
       <action type="external"/>
     </simple>
     <simple id="nic_usage" type="long">
       <value>900</value>
       <units>MB/s</units>
+      <kind kindtype="property"/>
+      <action type="external"/>
     </simple>
-    <configurationkind kindtype="configure"/>
+    <simple id="files_available" mode="readwrite" name="files_available" type="float" complex="false">
+      <description>The percentage of file handles remaining to the GPP that triggers a threshold condition</description>
+      <value>3</value>
+      <units>%</units>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="threads" mode="readwrite" name="threads" type="float" complex="false">
+      <description>The percentage of threads available to the GPP that triggers a threshold condition</description>
+      <value>3</value>
+      <units>%</units>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <configurationkind kindtype="property"/>
   </struct>
   <simple id="DCE:3bf07b37-0c00-4e2a-8275-52bd4e391f07" mode="readwrite" name="loadCapacityPerCore" type="double">
     <value>1.0</value>
@@ -304,4 +322,76 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     <kind kindtype="configure"/>
     <action type="external"/>
   </simple>
+  <struct id="affinity" mode="readwrite">
+    <simple id="affinity::exec_directive_value" mode="readwrite" name="exec_directive_value" type="string" optional="false">
+      <description>The context specification for the exec_directive_class.   See numa library manpage for socket(numa node) and cpu list specifications.  For cgroup/cpuset option then a pre-existing cgroup name is required.</description>
+      <value>0</value>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="affinity::exec_directive_class" mode="readwrite" name="exec_directive_class" type="string" optional="false">
+      <description>The classification of the affinity policy to apply.</description>
+      <value>socket</value>
+      <enumerations>
+        <enumeration label="socket" value="socket"/>
+        <enumeration label="nic" value="nic"/>
+        <enumeration label="cpu" value="cpu"/>
+        <enumeration label="cgroup" value="cgroup"/>
+      </enumerations>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="affinity::force_override" mode="readwrite" name="force_override" type="boolean" optional="false">
+      <description>determines if the specified affinity policy (exec_directive_value, exec_directive_class) is inherited by RH resources started from this GPP.</description>
+      <value>false</value>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="affinity::blacklist_cpus" mode="readwrite" name="blacklist_cpus" type="string">
+      <description>list of cpu ids to black list when making affinity requests. see numa library manpage for cpu list specifications. </description>
+      <value></value>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="affinity::deploy_per_socket" mode="readwrite" name="deploy_per_socket" type="boolean">
+      <description>If no affinity specification is provide during deployment, then enabling this will deploy resources on next available processor socket. (force_override will ignore this)</description>
+      <value>false</value>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="affinity::disabled" mode="readwrite" name="disabled" type="boolean">
+      <description>controls if affinity requests are processed by the GPP.</description>
+      <value>true</value>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <configurationkind kindtype="property"/>
+  </struct>
+  <simple id="processor_monitor_list" mode="readonly" type="string">
+    <description>list of cpu ids that are being monitored for loadavg and idle utilization.</description>
+    <kind kindtype="configure"/>
+    <action type="external"/>
+  </simple>
+  <simple id="threshold_cycle_time" mode="readwrite" name="threshold_cycle_time" type="ulong">
+    <description>cycle time between updates of metric capture, calculations and threshold evaluations.</description>
+    <value>500</value>
+    <units>milliseconds</units>
+    <kind kindtype="property"/>
+    <action type="external"/>
+  </simple>
+  <struct id="ulimit" mode="readonly">
+    <simple id="current_threads" type="long">
+      <description>The current number of threads that the user that owns GPP is currently running</description>
+    </simple>
+    <simple id="max_threads" type="long">
+      <description>The maximum number of threads that the user that owns GPP is allowed to run</description>
+    </simple>
+    <simple id="current_open_files" type="long">
+      <description>The current number of open file handles that the user that owns GPP currently has</description>
+    </simple>
+    <simple id="max_open_files" type="long">
+      <description>The maximum number of open file handles that the user that owns GPP is allowed</description>
+    </simple>
+    <configurationkind kindtype="property"/>
+  </struct>
 </properties>

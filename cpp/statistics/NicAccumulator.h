@@ -20,16 +20,18 @@
 #ifndef NIC_ACCUMULATOR_H_
 #define	NIC_ACCUMULATOR_H_
 
-#include "Statistics.h"
-
+#include <stdint.h>
 #include <vector>
 #include <string>
-
+#include <boost/shared_ptr.hpp>
 #include <boost/function.hpp>
 
-#include <stdint.h>
+#include "Statistics.h"
+#include "states/NicState.h"
 
-class NicState;
+class NicAccumulator;
+typedef boost::shared_ptr< NicAccumulator > NicAccumulatorPtr;
+
 
 class NicAccumulator : public Statistics
 {
@@ -39,8 +41,9 @@ public:
 
 public:
     NicAccumulator();
+    NicAccumulator( const NicStatePtr &nicState );
     
-    void add_nic( const boost::shared_ptr<const NicState>& nic_state );
+    void add_nic( const NicStatePtr& nic_state );
 
     void compute_statistics();
 
@@ -71,6 +74,8 @@ private:
     CurrentTimeFunction current_time_;
 };
 
+
+typedef boost::shared_ptr< NicAccumulator >  NicAccumulatorPtr;
 
 #endif	
 

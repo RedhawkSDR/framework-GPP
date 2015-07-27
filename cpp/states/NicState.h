@@ -20,15 +20,17 @@
 #ifndef NIC_STATE_H_
 #define NIC_STATE_H_
 
-#include "State.h"
-
-#include <boost/shared_ptr.hpp>
-#include <boost/function.hpp>
-
 #include <string>
 #include <vector>
-
 #include <stdint.h>
+#include <boost/shared_ptr.hpp>
+#include <boost/function.hpp>
+#include "State.h"
+
+class NicState;
+
+typedef boost::shared_ptr< NicState > NicStatePtr;
+
 
 struct NicStateData
 {
@@ -127,6 +129,7 @@ private:
     typedef boost::function< void() > StateVariableUpdateFunction;
     std::vector<StateVariableUpdateFunction> update_functions;
 };
+
 
 
 #endif

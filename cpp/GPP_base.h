@@ -56,7 +56,7 @@ class GPP_base : public ExecutableDevice_impl, protected ThreadedComponent
         bool useScreen;
         double loadCapacity;
         CORBA::Long mcastnicIngressCapacity;
-        CORBA::Long memCapacity;
+        CORBA::LongLong memCapacity;
         double loadCapacityPerCore;
         float reserved_capacity_per_component;
         short processor_cores;
@@ -70,6 +70,10 @@ class GPP_base : public ExecutableDevice_impl, protected ThreadedComponent
         std::vector<nic_allocation_status_struct_struct> nic_allocation_status;
         std::vector<nic_metrics_struct_struct> nic_metrics;
         std::vector<interfaces_struct> networkMonitor;
+        std::string processor_monitor_list;
+        affinity_struct affinity;
+        CORBA::ULong threshold_cycle_time;
+        ulimit_struct ulimit;
 
         // Ports
         PropertyEventSupplier *propEvent;

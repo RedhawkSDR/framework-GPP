@@ -62,7 +62,7 @@ public:
     
 public:
     virtual ~ProcStatFileParser(){}
-    static void Parse( std::istream& istr, ProcStatFileData& data );
+    static void Parse( ProcStatFileData& data );
 
 protected:
     virtual void parse( std::istream& istr, ProcStatFileData& data );

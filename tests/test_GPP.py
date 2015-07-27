@@ -37,6 +37,24 @@ from ossie.utils import sb
 from ossie.cf import CF, CF__POA
 import ossie.utils.testing
 
+# numa layout: node 0 cpus, node 1 cpus, node 0 cpus sans cpuid=0
+
+maxcpus=32
+maxnodes=2
+numa_match={ "all" : "0-31",
+             "sock0": "0-7,16-23",
+             "sock1": "8-15,24-31", 
+             "sock0sans0": "1-7,16-23", 
+             "5" : "5",
+             "8-10" : "8-10" }
+numa_layout=[ "0-7,16-23", "8-15,24-31" ]
+
+def get_match( key="all" ):
+    if key and  key in numa_match:
+        return numa_match[key]
+    return numa_match["all"]
+
+
 class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
     """Test for all component implementations in test"""
 
@@ -55,6 +73,27 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
                 return ans
         else:
             return default
+
+    def check_affinity(self, pname, affinity_match="0-31", use_pidof=True, pid_in=None):
+        try:
+            if pid_in:
+                pid=pid_in
+                o2=os.popen('cat /proc/'+str(pid)+'/status | grep Cpus_allowed_list')
+            else:
+                if use_pidof == True:
+                    o1=os.popen('pidof -x '+pname )
+                else:
+                    o1=os.popen('pgrep -f '+pname )
+                pid=o1.read()
+                o2=os.popen('cat /proc/'+pid.strip('\n')+'/status | grep Cpus_allowed_list')
+            cpus_allowed=o2.read().split()
+        except:
+            cpus_allowed=[]
+
+        print pname, cpus_allowed
+        self.assertEqual(cpus_allowed[1],affinity_match)
+        return
+
         
     def runGPP(self, execparam_overrides={}):
         #######################################################################
@@ -195,7 +234,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
         cores = multiprocessing.cpu_count()
         procs = []
-        for core in range(cores):
+        for core in range(cores*2):
             procs.append(subprocess.Popen('./busy.py'))
         time.sleep(1)
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.BUSY)
@@ -222,7 +261,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.ACTIVE)
         cores = multiprocessing.cpu_count()
         procs = []
-        for core in range(cores):
+        for core in range(cores*2):
             procs.append(subprocess.Popen('./busy.py'))
         time.sleep(1)
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.BUSY)
@@ -238,6 +277,8 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         time.sleep(1)    
         self.comp_obj.terminate(pid)
         try:
+            # kill all busy.py just in case
+            os.system('pkill -9 -f busy.py')
             os.kill(pid, 0)
         except OSError:
             pass
@@ -398,6 +439,206 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assert_(self.comp_obj._get_identifier() == event.sourceId)
         self.assert_('DCE:22a60339-b66e-4309-91ae-e9bfed6f0490' == event.properties[0].id)
         self.assert_(81 == any.from_any(event.properties[0].value))
+
+
+    def DeployWithAffinityOptions(self, options_list, numa_layout_test, bl_cpus ):
+        self.runGPP()
+
+        self.comp_obj.initialize()
+
+        # enable affinity processing..
+        props=[ossie.cf.CF.DataType(id='affinity', value=CORBA.Any(CORBA.TypeCode("IDL:CF/Properties:1.0"), 
+                       [ ossie.cf.CF.DataType(id='affinity::exec_directive_value', value=CORBA.Any(CORBA.TC_string, '')), 
+                         ossie.cf.CF.DataType(id='affinity::exec_directive_class', value=CORBA.Any(CORBA.TC_string, 'socket')), 
+                         ossie.cf.CF.DataType(id='affinity::force_override', value=CORBA.Any(CORBA.TC_boolean, False)), 
+                         ossie.cf.CF.DataType(id='affinity::blacklist_cpus', value=CORBA.Any(CORBA.TC_string, bl_cpus)), 
+                         ossie.cf.CF.DataType(id='affinity::deploy_per_socket', value=CORBA.Any(CORBA.TC_boolean, False)), 
+                         ossie.cf.CF.DataType(id='affinity::disabled', value=CORBA.Any(CORBA.TC_boolean, False))  ## enable affinity
+                       ] ))]
+
+        self.comp_obj.configure(props)
+
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
+        
+        fs_stub = ComponentTests.FileSystemStub()
+        fs_stub_var = fs_stub._this()
+
+        ## Run a component with NIC based affinity
+        self.comp_obj.load(fs_stub_var, "/component_stub.py", CF.LoadableDevice.EXECUTABLE)
+        self.assertEqual(os.path.isfile("component_stub.py"), True) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
+        
+        comp_id = "DCE:00000000-0000-0000-0000-000000000000:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid = self.comp_obj.execute("/component_stub.py", [
+                CF.DataType(id="AFFINITY", value=any.to_any( options_list ) ) ],
+                [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                 CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                 CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
+        self.assertNotEqual(pid, 0)
+
+        self.check_affinity( 'component_stub.py', get_match(numa_layout_test), False)
+        
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            self.fail("Process failed to execute")
+        time.sleep(1)    
+        self.comp_obj.terminate(pid)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            pass
+        else:
+            self.fail("Process failed to terminate")
+
+
+    def testNicAffinity(self):
+        self.DeployWithAffinityOptions( [ CF.DataType(id='nic',value=any.to_any('em1')) ], "sock0", '' )
+
+    def testNicAffinityWithBlackList(self):
+        self.DeployWithAffinityOptions( [ CF.DataType(id='nic',value=any.to_any('em1')) ], "sock0sans0", '0' )
+
+    def testCpuAffinity(self):
+        if maxcpus > 6:
+            self.DeployWithAffinityOptions( [ CF.DataType(id='affinity::exec_directive_class',value=any.to_any('cpu')),
+                                              CF.DataType(id='affinity::exec_directive_value',value=any.to_any('5')) ], "5", '' )
+
+    def testSocketAffinity(self):
+        self.DeployWithAffinityOptions( [ CF.DataType(id='affinity::exec_directive_class',value=any.to_any('socket')),
+                               CF.DataType(id='affinity::exec_directive_value',value=any.to_any('1')) ], 
+                                        "sock1", '0' )
+
+    def testDeployOnSocket(self):
+        self.runGPP()
+
+        self.comp_obj.initialize()
+
+        # enable affinity processing..
+        props=[ossie.cf.CF.DataType(id='affinity', value=CORBA.Any(CORBA.TypeCode("IDL:CF/Properties:1.0"), 
+                       [ ossie.cf.CF.DataType(id='affinity::exec_directive_value', value=CORBA.Any(CORBA.TC_string, '')), 
+                         ossie.cf.CF.DataType(id='affinity::exec_directive_class', value=CORBA.Any(CORBA.TC_string, 'socket')), 
+                         ossie.cf.CF.DataType(id='affinity::force_override', value=CORBA.Any(CORBA.TC_boolean, False)), 
+                         ossie.cf.CF.DataType(id='affinity::blacklist_cpus', value=CORBA.Any(CORBA.TC_string, '')), 
+                         ossie.cf.CF.DataType(id='affinity::deploy_per_socket', value=CORBA.Any(CORBA.TC_boolean, True)),   ## enable deploy_on 
+                         ossie.cf.CF.DataType(id='affinity::disabled', value=CORBA.Any(CORBA.TC_boolean, False))  ## enable affinity
+                       ] ))]
+
+        self.comp_obj.configure(props)
+
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
+        
+        fs_stub = ComponentTests.FileSystemStub()
+        fs_stub_var = fs_stub._this()
+
+        ## Run a component with NIC based affinity
+        self.comp_obj.load(fs_stub_var, "/component_stub.py", CF.LoadableDevice.EXECUTABLE)
+        self.assertEqual(os.path.isfile("component_stub.py"), True) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
+        
+        comp_id = "DCE:00000000-0000-0000-0000-000000000000:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid0 = self.comp_obj.execute("/component_stub.py", [],
+                [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                 CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                 CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
+        self.assertNotEqual(pid0, 0)
+
+        comp_id = "DCE:00000000-0000-0000-0000-000000000001:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid1 = self.comp_obj.execute("/component_stub.py", [],
+                [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                 CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                 CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
+
+        self.assertNotEqual(pid1, 0)
+
+        self.check_affinity( 'component_stub.py', get_match("sock0"), False, pid0)
+        self.check_affinity( 'component_stub.py', get_match("sock0"), False, pid1)
+        
+        for pid in [ pid0, pid1 ]:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                self.fail("Process failed to execute")
+            time.sleep(1)    
+            self.comp_obj.terminate(pid)
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                pass
+            else:
+                self.fail("Process failed to terminate")
+
+    def testForceOverride(self):
+        self.runGPP()
+
+        self.comp_obj.initialize()
+
+        # enable affinity processing..
+        props=[ossie.cf.CF.DataType(id='affinity', value=CORBA.Any(CORBA.TypeCode("IDL:CF/Properties:1.0"), 
+                       [ ossie.cf.CF.DataType(id='affinity::exec_directive_value', value=CORBA.Any(CORBA.TC_string, '1')), 
+                         ossie.cf.CF.DataType(id='affinity::exec_directive_class', value=CORBA.Any(CORBA.TC_string, 'socket')), 
+                         ossie.cf.CF.DataType(id='affinity::force_override', value=CORBA.Any(CORBA.TC_boolean, True)), 
+                         ossie.cf.CF.DataType(id='affinity::blacklist_cpus', value=CORBA.Any(CORBA.TC_string, '')), 
+                         ossie.cf.CF.DataType(id='affinity::deploy_per_socket', value=CORBA.Any(CORBA.TC_boolean, True)), 
+                         ossie.cf.CF.DataType(id='affinity::disabled', value=CORBA.Any(CORBA.TC_boolean, False))  ## enable affinity
+                       ] ))]
+
+        self.comp_obj.configure(props)
+
+        self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
+        
+        fs_stub = ComponentTests.FileSystemStub()
+        fs_stub_var = fs_stub._this()
+
+        ## Run a component with NIC based affinity
+        self.comp_obj.load(fs_stub_var, "/component_stub.py", CF.LoadableDevice.EXECUTABLE)
+        self.assertEqual(os.path.isfile("component_stub.py"), True) # Technically this is an internal implementation detail that the file is loaded into the CWD of the device
+        
+        comp_id = "DCE:00000000-0000-0000-0000-000000000000:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid0 = self.comp_obj.execute("/component_stub.py", [],
+                [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                 CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                 CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
+        self.assertNotEqual(pid0, 0)
+
+        comp_id = "DCE:00000000-0000-0000-0000-000000000001:waveform_1"
+        app_id = "waveform_1"
+        appReg = ApplicationRegistrarStub(comp_id, app_id)
+        appreg_ior = sb.orb.object_to_string(appReg._this())
+        pid1 = self.comp_obj.execute("/component_stub.py", [],
+                [CF.DataType(id="COMPONENT_IDENTIFIER", value=any.to_any(comp_id)), 
+                 CF.DataType(id="NAME_BINDING", value=any.to_any("component_stub")),CF.DataType(id="PROFILE_NAME", value=any.to_any("/component_stub/component_stub.spd.xml")),
+                 CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
+
+        self.assertNotEqual(pid1, 0)
+
+        self.check_affinity( 'component_stub.py',get_match("sock1"), False, pid0)
+        self.check_affinity( 'component_stub.py',get_match("sock1"), False, pid1)
+        
+        for pid in [ pid0, pid1 ]:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                self.fail("Process failed to execute")
+            time.sleep(1)    
+            self.comp_obj.terminate(pid)
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                pass
+            else:
+                self.fail("Process failed to terminate")
+
+
         
     # TODO Add additional tests here
     #
@@ -407,4 +648,70 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
     # for modules that will assist with testing components with BULKIO ports
     
 if __name__ == "__main__":
+    # figure out numa layout, test numaclt --show ..
+    import os
+    maxnode=0
+    maxcpu=1
+    try:
+        # figure out if GPP has numa library dependency
+        lines = [ line.rstrip() for line in os.popen('ldd ../cpp/GPP') ]
+        t=None
+        for l in lines:
+            if "libnuma" in l:
+              t="yes"
+
+        if t == None:
+            raise 1
+
+        lines = [line.rstrip() for line in os.popen('numactl --show')]
+        for l in lines:
+            if l.startswith('nodebind'):
+                maxnode=int(l.split()[-1])
+            if l.startswith('physcpubind'):
+                maxcpu=int(l.split()[-1])
+
+        if maxcpu < 10:
+            raise -1
+
+        maxcpus=maxcpu+1
+        maxnodes=maxnode+1
+        numa_layout=[]
+        for i in range(maxnodes):
+            xx = [line.rstrip() for line in open('/sys/devices/system/node/node'+str(i)+'/cpulist')]
+            numa_layout.append(xx[0])
+
+        all_cpus='0-'+str(maxcpus)
+        numa_match = { "all":all_cpus,
+                       "sock0":  all_cpus,
+                       "sock1": all_cpus,
+                       "sock0sans0":  all_cpus,
+                       "5" : all_cpus,
+                       "8-10" : all_cpus }
+
+        if len(numa_layout) > 0:
+            numa_match["sock0"]=numa_layout[0]
+            aa=numa_layout[0]
+            numa_match["sock0sans0"] = str(int(aa[0])+1)+aa[1:]
+
+        if len(numa_layout) > 1:
+            numa_match["sock1"]=numa_layout[1]
+
+        if maxcpus > 5:
+            numa_match["5"]="5"
+
+        if maxcpus > 11:
+            numa_match["8-10"]="8-10"
+    except:
+        import multiprocessing
+        all_cpus='0-'+str(multiprocessing.cpu_count()-1)
+        maxnodes=1
+        maxcpus=multiprocessing.cpu_count()
+        numa_match={ "all" :  all_cpus,
+                     "sock0":  all_cpus,
+                     "sock1": all_cpus,
+                     "sock0sans0":  all_cpus,
+                     "5" : all_cpus,
+                     "8-10" : all_cpus }
+
+
     ossie.utils.testing.main("../GPP.spd.xml") # By default tests all implementations

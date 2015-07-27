@@ -19,30 +19,53 @@
  */
 #ifndef SYSTEM_MONITOR_REPORTING_H_
 #define SYSTEM_MONITOR_REPORTING_H_
-
-#include "Reporting.h"
-
-#include <boost/shared_ptr.hpp>
-
 #include <vector>
+#include <stdint.h>
+#include <boost/shared_ptr.hpp>
+#include "Reporting.h"
+#include "statistics/Statistics.h"
+#include "states/ProcMeminfo.h"
 
-class CpuUsageAccumulator;
-class system_monitor_struct;
-
-class SystemMonitorReporting : public Reporting
+class SystemMonitor : public Reporting
 {
+ public: 
+  typedef boost::shared_ptr< CpuStatistics >  CpuStatsPtr;
+  typedef boost::shared_ptr< ProcMeminfo >    MemInfoPtr;
+
+  struct Report {
+	uint64_t virtual_memory_total;
+	uint64_t virtual_memory_used;
+	uint64_t virtual_memory_free;
+	double   virtual_memory_percent;
+	uint64_t physical_memory_total;
+	uint64_t physical_memory_used;
+	uint64_t physical_memory_free;
+	double   physical_memory_percent;
+	double   cpu_percent;
+	double   user_cpu_percent;
+	double   system_cpu_percent;
+	double   idle_cpu_percent;
+	double   up_time;
+	double   last_update_time;
+  };
+  
 public:
-    SystemMonitorReporting( const boost::shared_ptr<const CpuUsageAccumulator>& cpu_usage_accumulator,
-                         system_monitor_struct& reporting_data);
-    
-    void report();
+  SystemMonitor( const CpuStatsPtr & cpu_usage_stats,
+                 const MemInfoPtr  & mem_usage_state );
+ 
+  double   get_idle_percent() const;
+  double   get_idle_average() const;
+  uint64_t get_mem_free() const;
+  const Report &getReport() const;
+  void report();
     
 private:
     std::string format_up_time(unsigned long secondsUp) const;
     
 private:
-    boost::shared_ptr<const CpuUsageAccumulator> cpu_usage_accumulator_;
-    system_monitor_struct& reporting_data_;
+    CpuStatsPtr     cpu_usage_stats_;
+    MemInfoPtr      mem_usage_state_;
+    Report          report_;
 };
 
 

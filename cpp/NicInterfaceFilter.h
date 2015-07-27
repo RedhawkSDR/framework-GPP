@@ -19,13 +19,13 @@
  */
 #ifndef NIC_INTERFACE_FILTER_H_
 #define NIC_INTERFACE_FILTER_H_
-
-#include <boost/regex_fwd.hpp>
-#include <boost/shared_ptr.hpp>
-
 #include <string>
 #include <vector>
 #include <map>
+#include <boost/regex_fwd.hpp>
+#include <boost/shared_ptr.hpp>
+#include "states/NicState.h"
+
 
 typedef std::vector<std::string> NicInterfaceRegexes;
 
@@ -46,12 +46,11 @@ private:
     boost::shared_ptr<boost::regex> regex_;
 };
 
-class NicState;
 
 class NicInterfaceFilter
 {
 public:
-    typedef std::map<std::string, boost::shared_ptr<NicState> > NicStates;
+    typedef std::map< std::string, NicStatePtr > NicStates;
     
 public:
     NicInterfaceFilter( const NicInterfaceRegexes& nic_interface_regexes, 

@@ -28,6 +28,7 @@
 
 #include <ossie/CorbaUtils.h>
 #include <CF/cf.h>
+#include "affinity_struct.h"
 
 struct nic_allocation_struct {
     nic_allocation_struct ()
@@ -336,6 +337,8 @@ struct thresholds_struct {
         cpu_idle = 10;
         mem_free = 100;
         nic_usage = 900;
+        files_available = 3;
+        threads = 3;
     };
 
     static std::string getId() {
@@ -343,52 +346,41 @@ struct thresholds_struct {
     };
 
     float cpu_idle;
-    CORBA::Long mem_free;
+    CORBA::LongLong mem_free;
     CORBA::Long nic_usage;
+    float files_available;
+    float threads;
 };
 
 inline bool operator>>= (const CORBA::Any& a, thresholds_struct& s) {
     CF::Properties* temp;
     if (!(a >>= temp)) return false;
-    CF::Properties& props = *temp;
-    for (unsigned int idx = 0; idx < props.length(); idx++) {
-        if (!strcmp("cpu_idle", props[idx].id)) {
-            if (!(props[idx].value >>= s.cpu_idle)) {
-                CORBA::TypeCode_var typecode = props[idx].value.type();
-                if (typecode->kind() != CORBA::tk_null) {
-                    return false;
-                }
-            }
-        }
-        else if (!strcmp("mem_free", props[idx].id)) {
-            if (!(props[idx].value >>= s.mem_free)) {
-                CORBA::TypeCode_var typecode = props[idx].value.type();
-                if (typecode->kind() != CORBA::tk_null) {
-                    return false;
-                }
-            }
-        }
-        else if (!strcmp("nic_usage", props[idx].id)) {
-            if (!(props[idx].value >>= s.nic_usage)) {
-                CORBA::TypeCode_var typecode = props[idx].value.type();
-                if (typecode->kind() != CORBA::tk_null) {
-                    return false;
-                }
-            }
-        }
+    const redhawk::PropertyMap& props = redhawk::PropertyMap::cast(*temp);
+    if (props.contains("cpu_idle")) {
+        if (!(props["cpu_idle"] >>= s.cpu_idle)) return false;
+    }
+    if (props.contains("mem_free")) {
+        if (!(props["mem_free"] >>= s.mem_free)) return false;
+    }
+    if (props.contains("nic_usage")) {
+        if (!(props["nic_usage"] >>= s.nic_usage)) return false;
+    }
+    if (props.contains("files_available")) {
+        if (!(props["files_available"] >>= s.files_available)) return false;
+    }
+    if (props.contains("threads")) {
+        if (!(props["threads"] >>= s.threads)) return false;
     }
     return true;
 };
 
 inline void operator<<= (CORBA::Any& a, const thresholds_struct& s) {
-    CF::Properties props;
-    props.length(3);
-    props[0].id = CORBA::string_dup("cpu_idle");
-    props[0].value <<= s.cpu_idle;
-    props[1].id = CORBA::string_dup("mem_free");
-    props[1].value <<= s.mem_free;
-    props[2].id = CORBA::string_dup("nic_usage");
-    props[2].value <<= s.nic_usage;
+    redhawk::PropertyMap props;
+    props["cpu_idle"] = s.cpu_idle;
+    props["mem_free"] = s.mem_free;
+    props["nic_usage"] = s.nic_usage;
+    props["files_available"] = s.files_available;
+    props["threads"] = s.threads;
     a <<= props;
 };
 
@@ -398,6 +390,10 @@ inline bool operator== (const thresholds_struct& s1, const thresholds_struct& s2
     if (s1.mem_free!=s2.mem_free)
         return false;
     if (s1.nic_usage!=s2.nic_usage)
+        return false;
+    if (s1.files_available!=s2.files_available)
+        return false;
+    if (s1.threads!=s2.threads)
         return false;
     return true;
 };
@@ -1032,5 +1028,69 @@ inline bool operator== (const interfaces_struct& s1, const interfaces_struct& s2
 inline bool operator!= (const interfaces_struct& s1, const interfaces_struct& s2) {
     return !(s1==s2);
 };
+
+struct ulimit_struct {
+    ulimit_struct ()
+    {
+    };
+
+    static std::string getId() {
+        return std::string("ulimit");
+    };
+
+    CORBA::Long current_threads;
+    CORBA::Long max_threads;
+    CORBA::Long current_open_files;
+    CORBA::Long max_open_files;
+};
+
+inline bool operator>>= (const CORBA::Any& a, ulimit_struct& s) {
+    CF::Properties* temp;
+    if (!(a >>= temp)) return false;
+    const redhawk::PropertyMap& props = redhawk::PropertyMap::cast(*temp);
+    if (props.contains("current_threads")) {
+        if (!(props["current_threads"] >>= s.current_threads)) return false;
+    }
+    if (props.contains("max_threads")) {
+        if (!(props["max_threads"] >>= s.max_threads)) return false;
+    }
+    if (props.contains("current_open_files")) {
+        if (!(props["current_open_files"] >>= s.current_open_files)) return false;
+    }
+    if (props.contains("max_open_files")) {
+        if (!(props["max_open_files"] >>= s.max_open_files)) return false;
+    }
+    return true;
+}
+
+inline void operator<<= (CORBA::Any& a, const ulimit_struct& s) {
+    redhawk::PropertyMap props;
+ 
+    props["current_threads"] = s.current_threads;
+ 
+    props["max_threads"] = s.max_threads;
+ 
+    props["current_open_files"] = s.current_open_files;
+ 
+    props["max_open_files"] = s.max_open_files;
+    a <<= props;
+}
+
+inline bool operator== (const ulimit_struct& s1, const ulimit_struct& s2) {
+    if (s1.current_threads!=s2.current_threads)
+        return false;
+    if (s1.max_threads!=s2.max_threads)
+        return false;
+    if (s1.current_open_files!=s2.current_open_files)
+        return false;
+    if (s1.max_open_files!=s2.max_open_files)
+        return false;
+    return true;
+}
+
+inline bool operator!= (const ulimit_struct& s1, const ulimit_struct& s2) {
+    return !(s1==s2);
+}
+
 
 #endif // STRUCTPROPS_H

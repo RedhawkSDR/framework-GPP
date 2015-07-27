@@ -19,13 +19,35 @@
  */
 #ifndef STATISTICS_H_
 #define STATISTICS_H_
+#include "utils/Updateable.h"
 
-class Statistics
+
+class Statistics : public Updateable
 {
 public:
-    virtual ~Statistics(){}
-    
-    virtual void compute_statistics() = 0;
+  virtual ~Statistics(){};
+
+  void     update() {
+    compute_statistics();
+  }
+
+  virtual void compute_statistics() = 0;
 };
+
+
+
+class CpuStatistics : virtual public Statistics 
+{
+ public:
+  virtual ~CpuStatistics(){};
+
+  virtual double get_user_percent() const = 0;
+  virtual double get_system_percent() const = 0;
+  virtual double get_idle_percent() const = 0;
+  virtual double get_user_average() const = 0;
+  virtual double get_system_average() const = 0;
+  virtual double get_idle_average() const = 0;
+};
+
 
 #endif

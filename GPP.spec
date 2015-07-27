@@ -45,6 +45,8 @@ BuildRoot:      %{_tmppath}/%{name}-root
 
 Requires:       redhawk >= 2.0
 BuildRequires:  redhawk-devel >= 2.0
+BuildRequires:  numactl-devel >= 2.0
+
 
 %package profile
 Summary:        Basic GPP profile

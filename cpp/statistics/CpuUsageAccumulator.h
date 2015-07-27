@@ -19,43 +19,46 @@
  */
 #ifndef CPU_USAGE_ACCUMULATOR_H_
 #define CPU_USAGE_ACCUMULATOR_H_
-
-#include "Statistics.h"
-
 #include <vector>
 #include <iosfwd>
-
 #include <boost/shared_ptr.hpp>
+#include "Statistics.h"
+#include "states/CpuState.h"
 
-class CpuState;
+class CpuUsageAccumulator;
+typedef boost::shared_ptr< CpuUsageAccumulator >  CpuUsageAccumulatorPtr;
 
-class CpuUsageAccumulator : public Statistics
+class CpuUsageAccumulator : public CpuStatistics 
 {
-public:
-    typedef std::vector<unsigned long> CpuJiffies;
+ public:
+  
+  typedef std::vector<unsigned long> CpuJiffies;
 
-public:
-    CpuUsageAccumulator(const boost::shared_ptr<const CpuState>& cpu_state);
-    virtual ~CpuUsageAccumulator(){}
+ public:
+  CpuUsageAccumulator(const boost::shared_ptr<const CpuState>& cpu_state);
+  virtual ~CpuUsageAccumulator(){}
 
-    virtual void compute_statistics();
+  virtual void compute_statistics();
 
-    virtual unsigned long get_delta_cpu_jiffies_total() const;
+  virtual unsigned long get_delta_cpu_jiffies_total() const;
 
-    virtual double get_user_percent() const;
-    virtual double get_system_percent() const;
-    virtual double get_idle_percent() const;
+  virtual double get_user_percent() const;
+  virtual double get_system_percent() const;
+  virtual double get_idle_percent() const;
+  virtual double get_user_average() const { return 0.0; };
+  virtual double get_system_average() const { return 0.0; };
+  virtual double get_idle_average() const { return 0.0; };
 
-private:
-    double get_total_jiffies(const CpuJiffies& cpu_jiffies) const;
+ private:
+  double get_total_jiffies(const CpuJiffies& cpu_jiffies) const;
 
-    double get_cpu_field_percent( size_t field ) const;
+  double get_cpu_field_percent( size_t field ) const;
 
-private:
-    CpuJiffies prev_cpu_jiffies_;
-    CpuJiffies current_cpu_jiffies_;
+ private:
+  CpuJiffies prev_cpu_jiffies_;
+  CpuJiffies current_cpu_jiffies_;
     
-    boost::shared_ptr<const CpuState> cpu_state_;
+  boost::shared_ptr<const CpuState> cpu_state_;
 };
 
 #endif

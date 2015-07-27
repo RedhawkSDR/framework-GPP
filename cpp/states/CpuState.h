@@ -19,15 +19,14 @@
  */
 #ifndef CPU_STATE_H_
 #define CPU_STATE_H_
-
-#include "State.h"
-
-#include <boost/shared_ptr.hpp>
-
 #include <vector>
+#include <boost/shared_ptr.hpp>
+#include "State.h"
+#include "parsers/ProcStatFileParser.h"
 
-class ProcStatFileParser;
-class ProcStatFileData;
+class CpuState;
+typedef boost::shared_ptr< CpuState > CpuStatePtr;
+
 
 class CpuState : public State
 {
@@ -40,7 +39,7 @@ public:
     virtual unsigned long get_os_start_time() const;
 
 private:
-    boost::shared_ptr<ProcStatFileData> data_;
+    ProcStatFileData   data_;
 };
 
 #endif

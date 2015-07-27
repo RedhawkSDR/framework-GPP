@@ -19,12 +19,17 @@
  */
 #ifndef REPORTING_H_
 #define REPORTING_H_
+#include "utils/Updateable.h"
 
-class Reporting
+class Reporting : public Updateable
 {
 public:
     virtual ~Reporting(){}
-    
+
+    void    update() {
+      report();
+    }
+
     virtual void report() = 0;
 };
 

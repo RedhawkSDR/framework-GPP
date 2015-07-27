@@ -40,6 +40,21 @@ AX_BOOST_THREAD
 AX_BOOST_REGEX
 AX_BOOST_FILESYSTEM
 
+AC_ARG_ENABLE([affinity], AS_HELP_STRING([--disable-affinity], [Disable affinity processing]))
+   AC_MSG_CHECKING([Adding support for affinity processing])
+if test "x$enable_affinity" != "xno"; then
+   dnl  determine if numa library support is available
+   AC_SUBST(OSSIE_AFFINITY, "yes")
+   AC_MSG_RESULT([yes])
+else
+  AC_MSG_RESULT([no])
+fi
+
+if test "x$enable_affinity" != "xno"; then
+   AC_CHECK_LIB( numa, numa_available )
+fi
+
+
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
 

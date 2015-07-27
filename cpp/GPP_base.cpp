@@ -59,10 +59,10 @@ GPP_base::GPP_base(char *devMgr_ior, char *id, char *lbl, char *sftwrPrfl, CF::P
 
 GPP_base::~GPP_base()
 {
-    delete propEvent;
-    propEvent = 0;
-    delete MessageEvent_out;
-    MessageEvent_out = 0;
+  delete propEvent;
+  propEvent = 0;
+  delete MessageEvent_out;
+  MessageEvent_out = 0;
 }
 
 void GPP_base::construct()
@@ -281,7 +281,7 @@ void GPP_base::loadProperties()
                 "readwrite",
                 "",
                 "external",
-                "configure");
+                "property");
 
     addProperty(nic_allocation_status,
                 "nic_allocation_status",
@@ -306,6 +306,42 @@ void GPP_base::loadProperties()
                 "",
                 "external",
                 "configure");
+
+    addProperty(processor_monitor_list,
+                "processor_monitor_list",
+                "",
+                "readonly",
+                "",
+                "external",
+                "configure");
+
+    addProperty(affinity,
+                affinity_struct(),
+                "affinity",
+                "",
+                "readwrite",
+                "",
+                "external",
+                "property");
+
+
+    addProperty(threshold_cycle_time,
+                500,
+                "threshold_cycle_time",
+                "threshold_cycle_time",
+                "readwrite",
+                "milliseconds",
+                "external",
+                "property");
+    
+    addProperty(ulimit,
+                ulimit_struct(),
+                "ulimit",
+                "",
+                "readonly",
+                "",
+                "external",
+                "property");
 
 }
 

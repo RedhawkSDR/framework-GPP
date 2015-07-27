@@ -17,16 +17,16 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#include "ProcStatFileParser.h"
-#include "ParserExceptions.h"
-
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
-
+#include "ProcStatFileParser.h"
+#include "ParserExceptions.h"
+#include "utils/FileReader.h"
 void
-ProcStatFileParser::Parse( std::istream& istr, ProcStatFileData& data )
+ProcStatFileParser::Parse( ProcStatFileData& data )
 {
-    GetImpl()->parse( istr, data );
+  std::stringstream file_str( FileReader::ReadFile( "/proc/stat" ) );
+  GetImpl()->parse( file_str, data );
 }
 
 void 

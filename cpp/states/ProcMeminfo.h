@@ -17,20 +17,45 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#ifndef CPU_THRESHOLD_MONITOR_H_
-#define CPU_THRESHOLD_MONITOR_H_
+#ifndef _PROCMEMINFO_H_
+#define _PROCMEMINFO_H_
+#include <stdint.h>
+#include <ctime>
+#include <string>
+#include <map>
+#include <boost/shared_ptr.hpp>
+#include "states/State.h"
 
-#include "ThresholdMonitor.h"
-#include "statistics/Statistics.h"
+class ProcMeminfo;
+typedef  boost::shared_ptr< ProcMeminfo>  ProcMeminfoPtr;
 
-class CpuThresholdMonitor : public GenericThresholdMonitor<float>
+
+class ProcMeminfo : public State
 {
-public:
-  CpuThresholdMonitor( const std::string& source_id, const float* threshold, const CpuStatistics & cpu_usage_accumulator,
-                       const bool enableDispatch=false );
 
-	static std::string GetResourceId(){ return "cpu"; }
-	static std::string GetMessageClass(){ return "CPU_IDLE"; }
+ public:
+  typedef  uint64_t                           Counter;
+  typedef std::map< std::string, Counter >    Contents;
+
+  // init file and read in baseline stats
+  ProcMeminfo();
+
+  virtual ~ProcMeminfo();
+
+  // update content state by processing /proc/meminfo
+  void              update_state();
+
+  // return contents of file
+  const Contents   &get() const;
+  const Counter     getMetric( const std::string  &metric_name ) const ;
+    
+ protected:
+
+    Contents        contents;
+
+ private:
+
 };
 
-#endif
+
+#endif  // __PROCMEMINFO_H__

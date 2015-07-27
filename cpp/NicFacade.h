@@ -20,23 +20,25 @@
 #ifndef NIC_FACADE_H_
 #define NIC_FACADE_H_
 
-#include "NicInterfaceFilter.h"
-#include "states/State.h"
-#include "statistics/Statistics.h"
-#include "reports/Reporting.h"
-#include "struct_props.h"
-
-#include <boost/shared_ptr.hpp>
-
 #include <string>
 #include <vector>
 #include <map>
+#include <boost/shared_ptr.hpp>
 
-class NicState;
+#include "NicInterfaceFilter.h"
+#include "NicAllocator.h"
+#include "states/NicState.h"
+#include "reports/Reporting.h"
+#include "struct_props.h"
+
+
 class NicAccumulator;
-class NicAllocator;
 
-class NicFacade : public State, public Statistics, public Reporting
+class NicFacade;
+typedef boost::shared_ptr< NicFacade > NicFacadePtr;
+
+
+class NicFacade : public Reporting
 {
 public:
     NicFacade( const double& max_throughput_percent,
@@ -63,7 +65,7 @@ private:
     std::vector<std::string> poll_nic_interfaces() const;
     boost::shared_ptr<NicState> get_or_insert_nic_state( const std::string& interface );
     bool has_nic_accumulator( const std::string& device ) const;
-    void add_nic_accumulator( boost::shared_ptr<NicAccumulator> nic_accumulator );
+    void add_nic_accumulator( const NicStatePtr &nic_state );
     
     void write_filtered_nic_interfaces_reporting_data();
     void write_reporting_data();

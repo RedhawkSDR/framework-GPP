@@ -18,8 +18,8 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 #include "CpuUsageAccumulator.h"
-#include "../states/CpuState.h"
 #include "../parsers/ProcStatFileParser.h"
+#include "states/ProcStat.h"
 
 #include <numeric>
 #include <iostream>
@@ -82,3 +82,5 @@ CpuUsageAccumulator::get_cpu_field_percent( size_t field ) const
 	else
 		return 0;
 }
+
+

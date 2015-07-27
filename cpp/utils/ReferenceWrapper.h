@@ -43,6 +43,7 @@ private:
 	type& ref_;
 };
 
+
 template< class REFERENCE_TYPE >
 ReferenceWrapper<REFERENCE_TYPE> MakeRef( REFERENCE_TYPE& ref )
 {
@@ -67,5 +68,6 @@ ReferenceWrapper<REFERENCE_TYPE const, RETURN_TYPE const> MakeCref( REFERENCE_TY
 {
 	return ReferenceWrapper<REFERENCE_TYPE const, RETURN_TYPE const>(ref);
 }
+
 
 #endif

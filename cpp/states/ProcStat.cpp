@@ -17,20 +17,31 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#ifndef CPU_THRESHOLD_MONITOR_H_
-#define CPU_THRESHOLD_MONITOR_H_
+#include "ProcStat.h"
+#include "parsers/ProcStatParser.h"
 
-#include "ThresholdMonitor.h"
-#include "statistics/Statistics.h"
-
-class CpuThresholdMonitor : public GenericThresholdMonitor<float>
+ProcStat::ProcStat()
 {
-public:
-  CpuThresholdMonitor( const std::string& source_id, const float* threshold, const CpuStatistics & cpu_usage_accumulator,
-                       const bool enableDispatch=false );
+}
 
-	static std::string GetResourceId(){ return "cpu"; }
-	static std::string GetMessageClass(){ return "CPU_IDLE"; }
-};
+ProcStat::~ProcStat()
+{
+}
 
-#endif
+void ProcStat::update_state()
+{
+  ProcStatParser stat_parser;
+  Contents tmp;
+  stat_parser.parse( tmp );
+  contents = tmp;
+}
+
+
+const ProcStat::Contents& 
+ProcStat::get() const 
+{ 
+  return contents;
+}
+
+
+

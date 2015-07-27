@@ -17,15 +17,15 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#include "NicAccumulator.h"
-#include "../states/NicState.h"
-
 #include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <numeric>
 
 #include <sys/time.h>
+#include "NicAccumulator.h"
+#include "../states/NicState.h"
+
 
 static const double BYTES_PER_MEGABYTE = 1024*1024;
 
@@ -38,8 +38,18 @@ current_time_(CurrentTime)
 {
 }
 
+NicAccumulator::NicAccumulator( const NicStatePtr &nicState):
+prev_rx_bytes_(0),
+prev_tx_bytes_(0),
+prev_time_(std::numeric_limits<double>::max()),
+throughput_(0),
+current_time_(CurrentTime)
+{
+  add_nic(nicState);
+}
+
 void
-NicAccumulator::add_nic( const boost::shared_ptr<const NicState>& nic_state )
+NicAccumulator::add_nic( const NicStatePtr & nic_state )
 {
     validate_device( nic_state->get_device() );
     

@@ -19,11 +19,17 @@
  */
 #ifndef STATE_H_
 #define STATE_H_
+#include "utils/Updateable.h"
 
-class State
+
+class State : public Updateable 
 {
 public:
     virtual ~State(){}
+
+    void     update() {
+      update_state();
+    }
     
     virtual void update_state() = 0;
 };

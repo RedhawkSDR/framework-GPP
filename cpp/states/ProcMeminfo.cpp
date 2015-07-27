@@ -17,20 +17,35 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
-#ifndef CPU_THRESHOLD_MONITOR_H_
-#define CPU_THRESHOLD_MONITOR_H_
+#include "ProcMeminfo.h"
+#include "parsers/ProcMeminfoParser.h"
 
-#include "ThresholdMonitor.h"
-#include "statistics/Statistics.h"
-
-class CpuThresholdMonitor : public GenericThresholdMonitor<float>
+ProcMeminfo::ProcMeminfo()
 {
-public:
-  CpuThresholdMonitor( const std::string& source_id, const float* threshold, const CpuStatistics & cpu_usage_accumulator,
-                       const bool enableDispatch=false );
+}
 
-	static std::string GetResourceId(){ return "cpu"; }
-	static std::string GetMessageClass(){ return "CPU_IDLE"; }
-};
+ProcMeminfo::~ProcMeminfo()
+{
+}
 
-#endif
+void ProcMeminfo::update_state()
+{
+  ProcMeminfoParser parser;
+  Contents tmp;
+  parser.parse( tmp );
+  contents = tmp;
+}
+
+const ProcMeminfo::Counter ProcMeminfo::getMetric( const std::string &metric ) const {
+  return contents.at(metric);
+}
+
+
+const ProcMeminfo::Contents& 
+ProcMeminfo::get() const 
+{ 
+  return contents;
+}
+
+
+
