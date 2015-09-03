@@ -34,6 +34,10 @@ namespace  gpp {
       return redhawk::affinity::is_disabled();
     }
 
+    rh_logger::LoggerPtr get_affinity_logger() {
+      return redhawk::affinity::get_affinity_logger();
+    }
+
     void set_nic_promotion( const bool onoff ) {
       redhawk::affinity::set_nic_promotion(onoff);
     }
@@ -195,13 +199,13 @@ namespace  gpp {
 
       redhawk::affinity::CpuList::const_iterator citer=blacklist.begin();
       for (; citer != blacklist.end(); citer++) {
-        RH_NL_DEBUG("gpp::affinity", "BlackList ...:" << *citer);
+        RH_DEBUG(get_affinity_logger(), "BlackList ...:" << *citer);
       }
 
       redhawk::affinity::AffinityDirectives::const_iterator piter = spec.begin();
       for ( int cnt=0; piter != spec.end(); piter++, cnt++ ) {
         redhawk::affinity::AffinityDirective affinity_spec = *piter;
-        RH_NL_DEBUG("gpp::affinity", " cnt:" << cnt << " Processing Affinity pid: " << pid << " " << affinity_spec.first << ":" << affinity_spec.second );
+        RH_DEBUG(get_affinity_logger(), " cnt:" << cnt << " Processing Affinity pid: " << pid << " " << affinity_spec.first << ":" << affinity_spec.second );
 
 #ifdef HAVE_LIBNUMA
         // nic -- Determine cpu list by interrupts assigned for the specified NIC
@@ -221,11 +225,11 @@ namespace  gpp {
               }
 
               for( int i=0; i < (int)cpulist.size();i++ ) {
-                RH_NL_DEBUG("gpp::affinity", "Setting NIC (processor socket select) available sockets :" << numa_node_of_cpu(cpulist[i]) );
+                RH_DEBUG(get_affinity_logger(), "Setting NIC (processor socket select) available sockets :" << numa_node_of_cpu(cpulist[i]) );
                 numa_bitmask_setbit(node_mask, numa_node_of_cpu(cpulist[i]) );
               }
 
-              RH_NL_DEBUG("gpp::affinity", "Setting NIC (processor socket select) affinity constraint: :" << iface );
+              RH_DEBUG(get_affinity_logger(), "Setting NIC (processor socket select) affinity constraint: :" << iface );
               numa_bind(node_mask);
               numa_bitmask_free(node_mask);
             }
@@ -260,7 +264,7 @@ namespace  gpp {
                 std::ostringstream os;
                 os << numa_node_of_cpu( cpuid );
                 redhawk::affinity::CpuList tlist = get_cpu_list( "socket", os.str() );
-                RH_NL_INFO("gpp::affinity", "Promoting NIC affinity to PID:" << pid << " SOCKET:" << os.str() );
+                RH_INFO(get_affinity_logger(), "Promoting NIC affinity to PID:" << pid << " SOCKET:" << os.str() );
                 cpulist.clear();
                 for( int i=0; i < (int)tlist.size();i++ ) {
                   if ( tlist[i] == cpuid ) continue;
@@ -283,12 +287,12 @@ namespace  gpp {
                 for( int i=0; i < (int)cpulist.size();i++ ) {
                   // check if cpu id is blacklisted
                   if ( std::count( blacklist.begin(), blacklist.end(), cpulist[i] ) == 0  ) {
-                    RH_NL_DEBUG("gpp::affinity", "Setting NIC (cpu select) available :" << cpulist[i] );
+                    RH_DEBUG(get_affinity_logger(), "Setting NIC (cpu select) available :" << cpulist[i] );
                     numa_bitmask_setbit(cpu_mask, cpulist[i]);
                   }
                 }
 
-                RH_NL_DEBUG("gpp::affinity", "Setting NIC (cpu select) affinity constraint: :" << iface );
+                RH_DEBUG(get_affinity_logger(), "Setting NIC (cpu select) affinity constraint: :" << iface );
                 if ( numa_sched_setaffinity( pid, cpu_mask) ) {
                   std::ostringstream e;
                   e << "Binding to NIC with cpu affinity, nic=" << iface;
@@ -297,7 +301,7 @@ namespace  gpp {
                 numa_bitmask_free(cpu_mask);
               }
               else {
-                RH_NL_WARN("gpp::affinity", "Setting NIC (cpu select), no cpu available all blacklisted :" << iface );
+                RH_WARN(get_affinity_logger(), "Setting NIC (cpu select), no cpu available all blacklisted :" << iface );
                 std::ostringstream e;
                 e << "Binding to NIC, no cpus available all blacklisted :" << iface;
                 throw redhawk::affinity::AffinityFailed(e.str());
@@ -305,7 +309,7 @@ namespace  gpp {
             }
           }
           else {
-            RH_NL_WARN("gpp::affinity", "Setting NIC, unable to set directive:" << iface );
+            RH_WARN(get_affinity_logger(), "Setting NIC, unable to set directive:" << iface );
             std::ostringstream e;
             e << "Binding to NIC, unable to set directive, cannot determine processor socket or cpu list from interrupt mapping, directive:" << iface;
             throw redhawk::affinity::AffinityFailed(e.str());
@@ -323,7 +327,7 @@ namespace  gpp {
           // plain  node binding if no cpus are listed.
           if ( blacklist.size() == 0 ) {
             // bind to node... let system scheduler do its magic
-            RH_NL_DEBUG("gpp::affinity", "Setting PROCESSOR SOCKET affinity to constraint :" << nodestr );
+            RH_DEBUG(get_affinity_logger(), "Setting PROCESSOR SOCKET affinity to constraint :" << nodestr );
             numa_bind( node_mask );
           }
           else { // remove blacklisted cpus from node binding
@@ -343,7 +347,7 @@ namespace  gpp {
             // check if cpu id is blacklisted
             redhawk::affinity::CpuList::const_iterator biter = blacklist.begin();
             for ( ; biter != blacklist.end() ; biter++ ) {
-              RH_NL_DEBUG("gpp::affinity", "Setting PROCESSOR SOCKET (cpu select) blacklist :" << *biter );
+              RH_DEBUG(get_affinity_logger(), "Setting PROCESSOR SOCKET (cpu select) blacklist :" << *biter );
               numa_bitmask_clearbit(cpu_mask, *biter);
             }
 #if 0
@@ -354,21 +358,21 @@ namespace  gpp {
               int nbytes = numa_bitmask_nbytes(cpu_mask);
               for (int i=0; i < nbytes*8; i++ ){
                 if ( numa_bitmask_isbitset( cpu_mask, i ) ) {
-                  RH_NL_DEBUG("gpp::affinity", "PTHREAD setting affinity to cpu :" << i );
+                  RH_DEBUG(get_affinity_logger(), "PTHREAD setting affinity to cpu :" << i );
                   CPU_SET(i,&cset);
                 }
               }
 
               //if ( !pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cset) ) {y
               if ( !sched_setaffinity(pid, sizeof(cpu_set_t), &cset) ) {
-                   RH_NL_ERROR("gpp::affinity", "Setting PROCESSOR SOCKET (cpu select), unable to set processor affinity");
+                   RH_ERROR(get_affinity_logger(), "Setting PROCESSOR SOCKET (cpu select), unable to set processor affinity");
               }
 
 
             }
 #endif
 
-            RH_NL_DEBUG("gpp::affinity", "Setting PROCESSOR SOCKET (cpu select) affinity, pid/constraint:" << pid << "/" << nodestr );
+            RH_DEBUG(get_affinity_logger(), "Setting PROCESSOR SOCKET (cpu select) affinity, pid/constraint:" << pid << "/" << nodestr );
             if ( numa_sched_setaffinity( pid, cpu_mask) ) {
               std::ostringstream e;
               e << "Binding to PROCESSOR SOCKET with blacklisted cpus, socket=" << nodestr;
@@ -392,11 +396,11 @@ namespace  gpp {
           // apply black list 
           redhawk::affinity::CpuList::const_iterator biter = blacklist.begin();
           for ( ; biter != blacklist.end() ; biter++ ) {
-              RH_NL_DEBUG("gpp::affinity", "Setting CPU affinity, blacklist :" << *biter );
+              RH_DEBUG(get_affinity_logger(), "Setting CPU affinity, blacklist :" << *biter );
             numa_bitmask_clearbit(cpu_mask, *biter);
           }
 
-          RH_NL_DEBUG("gpp::affinity", "Setting CPU affinity to constraint :" << cpustr );
+          RH_DEBUG(get_affinity_logger(), "Setting CPU affinity to constraint :" << cpustr );
           if ( numa_sched_setaffinity( pid, cpu_mask ) ) {
             std::ostringstream e;
             e << "Binding to CPU: " << cpustr;
@@ -406,7 +410,7 @@ namespace  gpp {
         }
 
 #else
-      RH_NL_WARN("gpp::affinity", "Missing affinity support from Redhawk libraries, ... ignoring numa affinity based requests ");
+      RH_WARN(get_affinity_logger(), "Missing affinity support from Redhawk libraries, ... ignoring numa affinity based requests ");
 #endif
 
         // cpuset -- assign via cpuset
@@ -423,7 +427,7 @@ namespace  gpp {
           }
           os << pid << std::endl;
           os.close();
-          RH_NL_DEBUG("gpp::affinity", "Setting CPUSET  affinity to constraint :" << cpuset_name );
+          RH_DEBUG(get_affinity_logger(), "Setting CPUSET  affinity to constraint :" << cpuset_name );
         }
 
         // cgroup - assign to cgroup
@@ -440,7 +444,7 @@ namespace  gpp {
           }
           os << pid << std::endl;
           os.close();
-          RH_NL_DEBUG("gpp::affinity", "Setting CGROUP  affinity to constraint :" << cgroup_name );
+          RH_DEBUG(get_affinity_logger(), "Setting CGROUP  affinity to constraint :" << cgroup_name );
         }
 
       }

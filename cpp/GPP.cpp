@@ -36,6 +36,7 @@
 #include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/filesystem/operations.hpp>
 #ifdef  HAVE_LIBNUMA
 #include <numa.h>
@@ -58,6 +59,20 @@
 
 
 
+class SigChildThread : public ThreadedComponent {
+  friend class GPP_i;
+public:
+  SigChildThread( GPP_i &p):
+    parent(p)
+ {};
+  int serviceFunction() {
+    return parent.sigchld_handler(0);
+  }
+private:
+  GPP_i &parent;
+};
+
+
 
 PREPARE_LOGGING(GPP_i)
 
@@ -72,7 +87,6 @@ inline bool operator== (const GPP_i::component_description& s1,
     return true;
 };
 
-
 uint64_t conv_units( const std::string &units ) {
   uint64_t unit_m=1024*1024;
   if ( units == "Kb" ) unit_m = 1e3;
@@ -86,27 +100,30 @@ uint64_t conv_units( const std::string &units ) {
   return unit_m;
 }
 
-
 GPP_i::GPP_i(char *devMgr_ior, char *id, char *lbl, char *sftwrPrfl) :
-    GPP_base(devMgr_ior, id, lbl, sftwrPrfl)
+  GPP_base(devMgr_ior, id, lbl, sftwrPrfl),
+    _signalThread( new SigChildThread(*this), 0.1 )
 {
   _init();
 }
 
 GPP_i::GPP_i(char *devMgr_ior, char *id, char *lbl, char *sftwrPrfl, char *compDev) :
-    GPP_base(devMgr_ior, id, lbl, sftwrPrfl, compDev)
+  GPP_base(devMgr_ior, id, lbl, sftwrPrfl, compDev),
+  _signalThread( new SigChildThread(*this), 0.1 )
 {
   _init();
 }
 
 GPP_i::GPP_i(char *devMgr_ior, char *id, char *lbl, char *sftwrPrfl, CF::Properties capacities) :
-    GPP_base(devMgr_ior, id, lbl, sftwrPrfl, capacities)
+  GPP_base(devMgr_ior, id, lbl, sftwrPrfl, capacities),
+  _signalThread( new SigChildThread(*this), 0.1 )
 {
   _init();
 }
 
 GPP_i::GPP_i(char *devMgr_ior, char *id, char *lbl, char *sftwrPrfl, CF::Properties capacities, char *compDev) :
-    GPP_base(devMgr_ior, id, lbl, sftwrPrfl, capacities, compDev)
+  GPP_base(devMgr_ior, id, lbl, sftwrPrfl, capacities, compDev),
+  _signalThread( new SigChildThread(*this), 0.1 )
 {
   _init();
 }
@@ -124,15 +141,7 @@ void GPP_i::_init() {
   s << tmp_user_id;
   user_id = s.str();
   limit_check_count = 0;
-  struct rlimit limit;
-  limit_files = -1;
-  limit_threads = -1;
-  if (getrlimit(RLIMIT_NPROC, &limit) == 0) {
-      limit_threads = limit.rlim_cur;
-  }
-  if (getrlimit(RLIMIT_NOFILE, &limit) == 0) {
-      limit_files = limit.rlim_cur;
-  }
+
   //
   // add our local set affinity method that performs numa library calls
   //
@@ -179,6 +188,8 @@ void GPP_i::_init() {
 
   // default cycle time setting for updating data model, metrics and state
   threshold_cycle_time = 500;
+
+  _signalThread.start();
 
   //
   // Add property change listeners and allocation modifiers
@@ -290,14 +301,6 @@ int GPP_i::_setupExecPartitions( const CpuList &bl_cpus ) {
 }
 
 
-
-void  GPP_i::initializeMemoryMonitor()
-{
-  // add available memory monitor, mem_free defaults to MB
-  addThresholdMonitor( new FreeMemoryThresholdMonitor(_identifier, MakeCref<CORBA::LongLong, float>(modified_thresholds.mem_free), 
-                                                      ConversionWrapper<CORBA::LongLong, float>(memCapacity, mem_cap_units, std::multiplies<float>() ) ) );
-}
-
 void
 GPP_i::initializeNetworkMonitor()
 {
@@ -323,10 +326,13 @@ GPP_i::initializeNetworkMonitor()
 }
 
 void
-GPP_i::initializeCpuMonitor()
+GPP_i::initializeResourceMonitors()
 {
   // add memory state reader
   ProcMeminfoPtr mem_state( new ProcMeminfo() );
+
+  // add system limits reader
+  SysLimitsPtr sys_limit( new SysLimits() );
 
   // add cpu utilization calculator
   RH_NL_INFO("GPP", " initialize CPU Montior --- wl size " << wl_cpus.size());
@@ -334,7 +340,8 @@ GPP_i::initializeCpuMonitor()
 
   // provide required system metrics to this GPP
   system_monitor.reset( new SystemMonitor( cpu_usage_stats,
-                                           mem_state ) );
+                                           mem_state,
+                                           sys_limit ) );
   // seed system monitor
   for ( int i=0; i<5; i++ ) { 
     system_monitor->report(); 
@@ -343,8 +350,17 @@ GPP_i::initializeCpuMonitor()
 
   data_model.push_back( system_monitor );
 
+  // add system limits reader
+  process_limits.reset( new ProcessLimits( getpid() ) );
+
+  data_model.push_back( process_limits );
+
   //  observer to monitor when cpu idle pass threshold value
   addThresholdMonitor( new CpuThresholdMonitor(_identifier, &modified_thresholds.cpu_idle, *cpu_usage_stats, false ) );
+
+  // add available memory monitor, mem_free defaults to MB
+  addThresholdMonitor( new FreeMemoryThresholdMonitor(_identifier, MakeCref<CORBA::LongLong, float>(modified_thresholds.mem_free), 
+                                                      ConversionWrapper<CORBA::LongLong, float>(memCapacity, mem_cap_units, std::multiplies<float>() ) ) );
 }
 
 void
@@ -407,8 +423,7 @@ void GPP_i::initialize() throw (CF::LifeCycle::InitializeError, CORBA::SystemExc
   // setup the data model for the GPP 
   //
   threshold_monitors.clear();
-  initializeCpuMonitor();
-  initializeMemoryMonitor();
+  initializeResourceMonitors();
   initializeNetworkMonitor();
 
   std::for_each( data_model.begin(), data_model.end(), boost::bind( &Updateable::update, _1 ) );
@@ -421,6 +436,21 @@ void GPP_i::initialize() throw (CF::LifeCycle::InitializeError, CORBA::SystemExc
   idle_capacity_modifier = 100.0 * reserved_capacity_per_component/((float)processor_cores);
   modified_thresholds = thresholds;
   modified_thresholds.mem_free = thresholds.mem_free*mem_free_units;
+
+  //
+  // transfer limits to properties
+  //
+  const Limits::Contents &sys_rpt = system_monitor->getReport().sys_limits;
+  sys_limits.current_threads = sys_rpt.threads;
+  sys_limits.max_threads = sys_rpt.threads_limit;
+  sys_limits.current_open_files = sys_rpt.files;
+  sys_limits.max_open_files = sys_rpt.files_limit;
+
+  const Limits::Contents &pid_rpt = process_limits->get();
+  gpp_limits.current_threads = pid_rpt.threads;
+  gpp_limits.max_threads = pid_rpt.threads_limit;
+  gpp_limits.current_open_files = pid_rpt.files;
+  gpp_limits.max_open_files = pid_rpt.files_limit;
 
   // enable monitors to push out state change events..
   MonitorSequence::iterator iter=threshold_monitors.begin();
@@ -437,8 +467,10 @@ void GPP_i::initialize() throw (CF::LifeCycle::InitializeError, CORBA::SystemExc
 }
 
 void GPP_i::releaseObject() throw (CORBA::SystemException, CF::LifeCycle::ReleaseError) {
-    if ( odm_consumer ) odm_consumer.reset();
-    GPP_base::releaseObject();
+  _signalThread.stop();
+  _signalThread.release();
+  if ( odm_consumer ) odm_consumer.reset();
+  GPP_base::releaseObject();
 }
 
 
@@ -546,95 +578,69 @@ CF::ExecutableDevice::ProcessID_Type GPP_i::execute (const char* name, const CF:
 
 void GPP_i::terminate (CF::ExecutableDevice::ProcessID_Type processId) throw (CORBA::SystemException, CF::ExecutableDevice::InvalidProcess, CF::Device::InvalidState)
 {
-    boost::recursive_mutex::scoped_lock lock(load_execute_lock);
+    LOG_DEBUG(GPP_i, " Terminate request, processID: " << processId);
+    component_description comp;
     try {
       ExecutableDevice_impl::terminate(processId);
-      this->removeReservation( getComponentDescription(processId)) ;
+      comp = getComponentDescription(processId) ;
+      removeReservation( comp ) ;
     }
     catch(...){
     }
     this->removePid(processId);
 }
+
+bool GPP_i::_component_cleanup( const int child_pid ) {
+  
+  component_description comp;
+  bool ret=false;
+  try {
+    comp = getComponentDescription(child_pid);
+    LOG_ERROR(GPP_i, " Unexpected Component Failure,  App/Identifier/Process: " << 
+              comp.appName << "/" << comp.identifier << "/" << child_pid);
+    removeReservation( comp ) ;
+    ret=true;
+    sendChildNotification(comp.identifier, comp.appName);
+  }
+  catch(...) {
+    // pass.. could be a pid from and popen or system commands..
+  }
+
+  removePid(child_pid);
+  return ret;
+}
+
 bool GPP_i::_check_limits( const thresholds_struct &thresholds)
 {
-    if ((limit_files == -1) or (limit_threads == -1)) {
-        return false;
-    }
-
     limit_check_count = (++limit_check_count) % 10;
     if ( limit_check_count ) {
         return false;
     }
 
-    boost::filesystem::path dirPath("/proc/");
-    boost::filesystem::directory_iterator end_iter;
-    unsigned int thread_count = 0;
-    unsigned int file_count = 0;
-    if (boost::filesystem::exists(dirPath)) {
-        for (boost::filesystem::directory_iterator dir_iter(dirPath); dir_iter!=end_iter;++dir_iter) {
-            if (boost::filesystem::is_directory(dir_iter->status())) {
-                std::stringstream filename;
-                filename<< BOOST_PATH_STRING(dir_iter->path())<<"/status";
-                std::ifstream fp_loginuid(filename.str().c_str(), std::ifstream::in);
-                if (not fp_loginuid.is_open())
-                    continue;
-                std::string loginuid;
-                std::string line;
-                while (true) {
-                    std::getline(fp_loginuid, line);
-                    if (line.size() == 0)
-                        break;
-                    if (!line.compare(0,4,"Uid:")) {
-                        size_t begin = line.find_first_not_of("\t ",4);
-                        size_t end = line.find_first_of("\t ",begin+1);
-                        end -= begin;
-                        loginuid = line.substr(begin,end);
-                        break;
-                    }
-                }
-                fp_loginuid.close();
-                if (not (loginuid==user_id))
-                    continue;
-                thread_count++;
-                try {
-                    std::stringstream subpath;
-                    subpath<< BOOST_PATH_STRING(dir_iter->path())<<"/task/";
-                    boost::filesystem::path subPath(subpath.str());
-                    if (boost::filesystem::exists(subPath)) {
-                        for (boost::filesystem::directory_iterator sub_dir_iter(subPath); sub_dir_iter!=end_iter;++sub_dir_iter) {
-                            thread_count++;
-                        }
-                    }
-                    std::stringstream subfilepath;
-                    subfilepath<< BOOST_PATH_STRING(dir_iter->path())<<"/fd/";
-                    boost::filesystem::path subFilePath(subfilepath.str());
-                    if (boost::filesystem::exists(subFilePath)) {
-                        for (boost::filesystem::directory_iterator sub_dir_iter(subFilePath); sub_dir_iter!=end_iter;++sub_dir_iter) {
-                            file_count++;
-                        }
-                    }
-                } catch ( ... ) {
-                    continue;
-                }
-            }
-        }
-    }
-    float _fthreshold = 1 - thresholds.files_available * .01;
     float _tthreshold = 1 - thresholds.threads * .01;
-    this->ulimit.current_open_files = file_count;
-    this->ulimit.current_threads = thread_count;
-    this->ulimit.max_open_files = limit_files;
-    this->ulimit.max_threads = limit_threads;
 
-    LOG_TRACE(GPP_i, "_check_limits  files (open/max): " <<  ulimit.current_open_files  << "/" << ulimit.max_open_files << " threads (cur/max): "  << ulimit.current_threads << "/" << ulimit.max_threads );
-    if (thread_count>(limit_threads*_tthreshold)) {
-      LOG_TRACE(GPP_i, "_check_limits  threads count/limit: " <<  thread_count   << "/" << (limit_threads*_tthreshold) );
-      return true;
+    if (gpp_limits.max_threads != -1) {
+      //
+      // check current process limits
+      //
+      LOG_TRACE(GPP_i, "_gpp_check_limits threads (cur/max): "  << gpp_limits.current_threads << "/" << gpp_limits.max_threads );
+      if (gpp_limits.current_threads>(gpp_limits.max_threads*_tthreshold)) {
+        LOG_WARN(GPP_i, "GPP process thread limit threshold exceeded,  count/threshold: " <<  gpp_limits.current_threads   << "/" << (gpp_limits.max_threads*_tthreshold) );
+        return true;
+      }
     }
-    if (file_count>(limit_files*_fthreshold)) {
-      LOG_TRACE(GPP_i, "_check_limits  files  count/limit: " <<  file_count   << "/" << (limit_files*_fthreshold) );
-      return true;
+
+    if ( sys_limits.max_threads != -1 ) {
+      //
+      // check current system limits
+      //
+      LOG_TRACE(GPP_i, "_sys_check_limits threads (cur/max): "  << sys_limits.current_threads << "/" << sys_limits.max_threads );
+      if (sys_limits.current_threads>( sys_limits.max_threads *_tthreshold)) {
+        LOG_WARN(GPP_i, "SYSTEM thread limit threshold exceeded,  count/threshold: " <<  sys_limits.current_threads   << "/" << (sys_limits.max_threads*_tthreshold) );
+        return true;
+      }
     }
+    
     return false;
 }
 
@@ -676,25 +682,34 @@ void GPP_i::updateUsageState()
 
 /**
   override ExecutableDevice::set_resource_affinity to handle localized settings.
+  
+  NOTE: the get_affinity_logger method is required to get the rh_logger object used after the "fork" method is
+  called.  ExecutableDevice will provide the logger to use.... 
+
+  log4cxx will lock in the child process before execv is call for high frequency component deployments.
  */
 void GPP_i::set_resource_affinity( const CF::Properties& options, const pid_t rsc_pid, const char *rsc_name, const std::vector<int> &bl )
  {
+
+   RH_DEBUG( redhawk::affinity::get_affinity_logger(), "Affinity Options....GPP/Resource: " << label() << "/" << rsc_name << " options" << options.length()  );   
+   boost::recursive_mutex::scoped_lock(load_execute_lock);
+
    // check if we override incoming affinity requests...
    if ( affinity.force_override ) {
      if ( redhawk::affinity::is_disabled() == false ) {
-       LOG_WARN(GPP_i, "Enforcing GPP affinity property settings to resource, GPP/pid: " <<  label() << "/" << rsc_pid );
+       RH_WARN(redhawk::affinity::get_affinity_logger(), "Enforcing GPP affinity property settings to resource, GPP/pid: " <<  label() << "/" << rsc_pid );
        if ( _apply_affinity( affinity, rsc_pid, rsc_name ) < 0 ) {
          throw redhawk::affinity::AffinityFailed("Failed to apply GPP affinity settings to resource");
        }
      }
      else {
-       LOG_WARN(GPP_i, "Affinity processing disabled, unable to apply GPP affinity settings to resource, GPP/rsc/pid: " <<  label() << "/" << rsc_name << "/" << rsc_pid );
+       RH_WARN(redhawk::affinity::get_affinity_logger(), "Affinity processing disabled, unable to apply GPP affinity settings to resource, GPP/rsc/pid: " <<  label() << "/" << rsc_name << "/" << rsc_pid );
      }
    }
    else if ( affinity.deploy_per_socket && redhawk::affinity::has_nic_affinity(options) == false ) {
 
      if ( execPartitions.size() == 0 ) {
-       LOG_WARN(GPP_i, "Skipping deploy_per_socket request. Reason: No execute partitions found, check numa settings. GPP/resource: " <<  label() << "/" << rsc_name );
+       RH_WARN(redhawk::affinity::get_affinity_logger(), "Skipping deploy_per_socket request. Reason: No execute partitions found, check numa settings. GPP/resource: " <<  label() << "/" << rsc_name );
        return;
      }
 
@@ -704,7 +719,7 @@ void GPP_i::set_resource_affinity( const CF::Properties& options, const pid_t rs
        if ( psoc < 0 ) {
          throw redhawk::affinity::AffinityFailed("Failed to apply PROCESSOR SOCKET affinity settings to resource");
        }
-       LOG_DEBUG(GPP_i, "Enforcing PROCESSOR SOCKET affinity settings to resource, GPP/pid/socket: " <<  label() << "/" << rsc_pid << "/" << psoc );
+       RH_DEBUG(redhawk::affinity::get_affinity_logger(), "Enforcing PROCESSOR SOCKET affinity settings to resource, GPP/pid/socket: " <<  label() << "/" << rsc_pid << "/" << psoc );
        std::ostringstream os;
        os << psoc;
        if ( _apply_affinity( rsc_pid, rsc_name, "socket", os.str(), bl_cpus ) < 0 ) {
@@ -714,39 +729,34 @@ void GPP_i::set_resource_affinity( const CF::Properties& options, const pid_t rs
    }
    else {
 
+     // create black list cpus
      redhawk::affinity::CpuList blcpus;
-     try {
-       //blcpus = gpp::affinity::get_cpu_list( "cpu", affinity.blacklist_cpus );
-       blcpus.resize(bl_cpus.size());
-       std::copy( bl_cpus.begin(), bl_cpus.end(), blcpus.begin() );
-     }
-     catch( redhawk::affinity::AffinityFailed &ex) {
-       LOG_ERROR(GPP_i, "Unable to process blacklist cpu specification reason:"  << ex.what() );
-       throw;
-     }
+     blcpus.resize(bl_cpus.size());
+     std::copy( bl_cpus.begin(), bl_cpus.end(), blcpus.begin() );
 
      //
      // Same flow as ExecutableDevice::set_resource_affinity
      //   
      try {
        if ( redhawk::affinity::has_affinity( options ) ) {
-         LOG_DEBUG(GPP_i, "Has Affinity Options....GPP/Resource:" << label() << "/" << rsc_name);
+         RH_DEBUG(redhawk::affinity::get_affinity_logger(), "Has Affinity Options....GPP/Resource:" << label() << "/" << rsc_name);
          if ( redhawk::affinity::is_disabled() ) {
-           LOG_WARN(GPP_i, "Resource has affinity directives but processing disabled, ExecDevice/Resource:" << 
-                    label() << "/" << rsc_name);
+           RH_WARN(redhawk::affinity::get_affinity_logger(), "Resource has affinity directives but processing disabled, ExecDevice/Resource:" << 
+                               label() << "/" << rsc_name);
          }
          else {
-           LOG_DEBUG(GPP_i, "Calling set resource affinity.... GPP/Resource:" <<
-                     label() << "/" << rsc_name);
-           redhawk::affinity::set_affinity( options, rsc_pid, blcpus );
+           RH_DEBUG(redhawk::affinity::get_affinity_logger(), "Calling set resource affinity.... GPP/Resource: " << label() << "/" << rsc_name);
+           redhawk::affinity::AffinityDirectives spec = redhawk::affinity::convert_properties( options );
+           gpp::affinity::set_affinity( spec, rsc_pid, blcpus );
          }
        }
        else {
-         LOG_TRACE(GPP_i, "No Affinity Options Found....GPP/Resource:" << label() << "/" << rsc_name);
+         RH_TRACE(redhawk::affinity::get_affinity_logger(), "No Affinity Options Found....GPP/Resource: " << label() << "/" << rsc_name);
        }
+
      }
      catch( redhawk::affinity::AffinityFailed &e) {
-       LOG_WARN(GPP_i, "AFFINITY REQUEST FAILED: " << e.what() );
+       RH_WARN(redhawk::affinity::get_affinity_logger(), "AFFINITY REQUEST FAILED: " << e.what() );
        throw;
      }
 
@@ -755,35 +765,8 @@ void GPP_i::set_resource_affinity( const CF::Properties& options, const pid_t rs
 }
 
 
-
 int GPP_i::serviceFunction()
 {
-
-  // Check if any children died....
-  fd_set readfds;
-  FD_ZERO(&readfds);
-  FD_SET(sig_fd, &readfds);
-  struct timeval tv = {0, 50};
-  struct signalfd_siginfo si;
-  ssize_t s;
-
-  if ( sig_fd > -1 ) {
-    // don't care about writefds and exceptfds:
-    select(sig_fd+1, &readfds, NULL, NULL, &tv);
-    if (FD_ISSET(sig_fd, &readfds)) {
-      LOG_TRACE(GPP_i, "Checking for signals from SIGNALFD......" << sig_fd);
-      s = read(sig_fd, &si, sizeof(struct signalfd_siginfo));
-      if (s != sizeof(struct signalfd_siginfo)){
-        LOG_ERROR(GPP_i, "SIGCHLD handling error ...");
-      }
- 
-      if ( si.ssi_signo == SIGCHLD) {
-        LOG_TRACE(GPP_i, "Child died , pid .................................." << si.ssi_pid);
-        sigchld_handler(si.ssi_signo);
-      }
-    }
-  }
-
   boost::posix_time::ptime now = boost::posix_time::microsec_clock::local_time();
   boost::posix_time::time_duration dur = now -time_mark;
   if ( dur.total_milliseconds() < threshold_cycle_time ) {
@@ -836,7 +819,7 @@ int GPP_i::serviceFunction()
 
   // update device usages state for the GPP
   updateUsageState();
-    
+
   return NORMAL;
 }
 
@@ -1153,37 +1136,85 @@ void GPP_i::update()
 
   memCapacity = system_monitor->get_mem_free()/ mem_cap_units;
   LOG_TRACE(GPP_i, __FUNCTION__ << ": memCapacity=" << memCapacity << " sys_monitor.get_mem_free=" << system_monitor->get_mem_free() );
+
+  //
+  // transfer limits to properties
+  //
+  const Limits::Contents &sys_rpt = system_monitor->getReport().sys_limits;
+  sys_limits.current_threads = sys_rpt.threads;
+  sys_limits.max_threads = sys_rpt.threads_limit;
+  sys_limits.current_open_files = sys_rpt.files;
+  sys_limits.max_open_files = sys_rpt.files_limit;
+
+  const Limits::Contents &pid_rpt = process_limits->get();
+  gpp_limits.current_threads = pid_rpt.threads;
+  gpp_limits.max_threads = pid_rpt.threads_limit;
+  gpp_limits.current_open_files = pid_rpt.files;
+  gpp_limits.max_open_files = pid_rpt.files_limit;
 }
 
 
-void GPP_i::sigchld_handler(int sig)
+int GPP_i::sigchld_handler(int sig)
 {
-    int status;
-    pid_t child_pid;
-        
-    while( (child_pid = waitpid(-1, &status, WNOHANG)) > 0 )
-    {
-      try {
-        component_description retval;
-        if ( devicePtr) {
-          retval = devicePtr->getComponentDescription(child_pid);
-          sendChildNotification(retval.identifier, retval.appName);
+  // Check if any children died....
+  fd_set readfds;
+  FD_ZERO(&readfds);
+  FD_SET(sig_fd, &readfds);
+  struct timeval tv = {0, 50};
+  struct signalfd_siginfo si;
+  ssize_t s;
+  uint32_t cnt=1;
+
+  if ( sig_fd > -1 ) {
+    // don't care about writefds and exceptfds:
+    while (true) {
+      FD_ZERO(&readfds);
+      FD_SET(sig_fd, &readfds);
+      select(sig_fd+1, &readfds, NULL, NULL, &tv);
+      if (FD_ISSET(sig_fd, &readfds)) {
+        LOG_TRACE(GPP_i, " Checking for signals from SIGNALFD(" << sig_fd << ") cnt:" << cnt++ );
+        s = read(sig_fd, &si, sizeof(struct signalfd_siginfo));
+        LOG_TRACE(GPP_i, " RETURN from SIGNALFD(" << sig_fd << ") cnt/ret:" << cnt << "/" << s );
+        if (s != sizeof(struct signalfd_siginfo)){
+          LOG_ERROR(GPP_i, "SIGCHLD handling error ...");
+          break;
         }
+
+        //
+        // for sigchld and signalfd
+        //   if there are many SIGCHLD events that occur at that same time, the kernel
+        //   can compress the event into a single process id...there for we need to 
+        //   try and waitpid for any process that have died.  The process id 
+        //   reported might not require waitpid, so try and clean up outside the waitpid loop
+        //
+        //  If a child dies, try to clean up tracking state for the resource. The _component_cleanup
+        //  will issue a notification event message for non domain terminated resources.. ie. segfaults..
+        //
+        if ( si.ssi_signo == SIGCHLD) {
+          LOG_TRACE(GPP_i, "Child died , pid .................................." << si.ssi_pid);
+          int status;
+          pid_t child_pid;
+          bool reap=false;
+          bool retv=false;
+          while( (child_pid = waitpid(-1, &status, WNOHANG)) > 0 ) {
+            LOG_TRACE(GPP_i, "WAITPID died , pid .................................." << child_pid);
+            if ( (uint)child_pid == si.ssi_pid ) reap=true;
+            retv=_component_cleanup( child_pid  );
+          }
+          if ( !reap ) { retv=_component_cleanup( si.ssi_pid ); }
+        }
+        else {
+          LOG_TRACE(GPP_i, "read from signalfd --> signo:" << si.ssi_signo);
+        }
+      } 
+      else {
         break;
-      } catch ( ... ) {
-        try {
-          sendChildNotification("Unknown", "Unknown");
-        } catch ( ... ) {
-        }
       }
     }
-    
-    if( child_pid == -1 && errno != ECHILD )
-    {
-        // Error
-        perror("waitpid");
-    }
+  }
 
+  //LOG_TRACE(GPP_i, "sigchld_handler RETURN.........loop cnt:" << cnt);
+  return NOOP;
 }
 
 
@@ -1301,7 +1332,7 @@ int GPP_i::_apply_affinity(  const pid_t rsc_pid,
   
   // apply affinity changes to the process
   try {
-    if ( redhawk::affinity::set_affinity( pol, rsc_pid, blcpus) != 0 )  {
+    if ( gpp::affinity::set_affinity( pol, rsc_pid, blcpus) != 0 )  {
       RH_NL_WARN("GPP", "Unable to set affinity for process, pid/name: " << rsc_pid << "/" << rsc_name );
     }
   }

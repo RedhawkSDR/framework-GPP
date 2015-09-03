@@ -28,9 +28,11 @@
 static const size_t BYTES_PER_MEGABYTE = 1024*1024;
 
 SystemMonitor::SystemMonitor( const CpuStatsPtr & cpu_usage_stats,
-                              const MemInfoPtr &mem_usage_state ) :
+                              const MemInfoPtr &mem_usage_state,
+                              const SysLimitsPtr &sys_limit ) :
   cpu_usage_stats_(cpu_usage_stats),
-  mem_usage_state_(mem_usage_state)
+  mem_usage_state_(mem_usage_state),
+  sys_limit_state_(sys_limit)
 {
   report();
 }
@@ -60,6 +62,7 @@ SystemMonitor::report()
   try {
     cpu_usage_stats_->update();
     mem_usage_state_->update();
+    sys_limit_state_->update();
     const ProcMeminfo::Contents &mem_stats = mem_usage_state_->get();
     report_.virtual_memory_total = mem_stats.at("MemTotal")+ mem_stats.at("SwapTotal");
     report_.virtual_memory_free =  (mem_stats.at("MemTotal") + mem_stats.at("SwapTotal") ) - mem_stats.at("Committed_AS");
@@ -85,6 +88,8 @@ SystemMonitor::report()
   report_.up_time = info.uptime;
   report_.last_update_time = time(NULL);
   report_.idle_cpu_percent = cpu_usage_stats_->get_idle_percent();
+
+  report_.sys_limits = sys_limit_state_->get();
 }
 
 std::string

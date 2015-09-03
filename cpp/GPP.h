@@ -58,8 +58,7 @@ class GPP_i : public GPP_base
 
         int serviceFunction();
         void initializeNetworkMonitor();
-        void initializeMemoryMonitor();
-        void initializeCpuMonitor();
+        void initializeResourceMonitors();
         void addThresholdMonitor( ThresholdMonitor* threshold_monitor );
         void send_threshold_event(const threshold_event_struct& message);
         
@@ -85,6 +84,7 @@ class GPP_i : public GPP_base
         CORBA::Boolean allocateCapacity (const CF::Properties& capacities) throw (CF::Device::InvalidState, CF::Device::InvalidCapacity, CF::Device::InsufficientCapacity, CORBA::SystemException);
         void releaseObject() throw (CORBA::SystemException, CF::LifeCycle::ReleaseError);
 
+        int sigchld_handler( int sig );
     protected:
 	struct component_description {
 	  std::string appName;
@@ -165,7 +165,7 @@ class GPP_i : public GPP_base
         void restoreReservation(const component_description &component);
         void reservedChanged(const float *oldValue, const float *newValue);
         void update();
-        void sigchld_handler( int sig );
+        //void sigchld_handler( int sig );
 
         ProcessList                                         reservations;
         ProcessList                                         tabled_reservations;
@@ -175,6 +175,7 @@ class GPP_i : public GPP_base
         NicFacadePtr                                        nic_facade;
         MonitorSequence                                     threshold_monitors;
         SystemMonitorPtr                                    system_monitor;
+        ProcessLimitsPtr                                    process_limits;
         ExecPartitionList                                   execPartitions;
         
         UpdateableSequence                                  data_model;
@@ -191,8 +192,9 @@ class GPP_i : public GPP_base
         redhawk::events::SubscriberPtr                      odm_consumer;       // interface that receives ODM_Channel events
         redhawk::events::ManagerPtr                         mymgr;              // interface to manage event channel access
 
-
  private:
+
+        bool  _component_cleanup( const int pid );
 
         //
         // setup execution partitions for launching components
@@ -238,11 +240,15 @@ class GPP_i : public GPP_base
         //
         void _init();
         
+        //
+        // check file and thread limits for the process and system
+        //
         bool _check_limits( const thresholds_struct &threshold);
         std::string user_id;
         int limit_check_count;
-        int limit_files;
-        int limit_threads;
+
+        ossie::ProcessThread                                _signalThread;
+
 };
 
 #endif // GPP_IMPL_H

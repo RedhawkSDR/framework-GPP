@@ -57,6 +57,13 @@ def get_match( key="all" ):
 
 class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
     """Test for all component implementations in test"""
+    def tearDown(self):
+        super(ComponentTests, self).tearDown()
+        try:
+            # kill all busy.py just in case
+            os.system('pkill -9 -f busy.py')
+        except OSError:
+            pass
 
     def promptToContinue(self):
         if sys.stdout.isatty():
@@ -233,14 +240,15 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.comp_obj.initialize()
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
         cores = multiprocessing.cpu_count()
+        sleep_time = 3+cores/10.0
         procs = []
         for core in range(cores*2):
             procs.append(subprocess.Popen('./busy.py'))
-        time.sleep(1)
+        time.sleep(sleep_time)
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.BUSY)
         for proc in procs:
             proc.kill()
-        time.sleep(1)
+        time.sleep(sleep_time)
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.IDLE)
         
         fs_stub = ComponentTests.FileSystemStub()
@@ -263,11 +271,11 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         procs = []
         for core in range(cores*2):
             procs.append(subprocess.Popen('./busy.py'))
-        time.sleep(1)
+        time.sleep(sleep_time)
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.BUSY)
         for proc in procs:
             proc.kill()
-        time.sleep(1)
+        time.sleep(sleep_time)
         self.assertEqual(self.comp_obj._get_usageState(), CF.Device.ACTIVE)
         
         try:

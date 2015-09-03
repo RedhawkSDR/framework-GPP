@@ -334,14 +334,24 @@ void GPP_base::loadProperties()
                 "external",
                 "property");
     
-    addProperty(ulimit,
+    addProperty(gpp_limits,
                 ulimit_struct(),
-                "ulimit",
+                "gpp_limits",
                 "",
                 "readonly",
                 "",
                 "external",
                 "property");
+
+    addProperty(sys_limits,
+                ulimit_struct(),
+                "sys_limits",
+                "",
+                "readonly",
+                "",
+                "external",
+                "property");
+
 
 }
 

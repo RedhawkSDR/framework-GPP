@@ -73,7 +73,8 @@ class GPP_base : public ExecutableDevice_impl, protected ThreadedComponent
         std::string processor_monitor_list;
         affinity_struct affinity;
         CORBA::ULong threshold_cycle_time;
-        ulimit_struct ulimit;
+        ulimit_struct gpp_limits;
+        ulimit_struct sys_limits;
 
         // Ports
         PropertyEventSupplier *propEvent;
