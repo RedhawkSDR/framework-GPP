@@ -106,8 +106,6 @@ rm -rf $RPM_BUILD_ROOT
 # Source profile script for architecture, if available
 [ -e /etc/profile.d/redhawk.sh ] && source /etc/profile.d/redhawk.sh
 
-# configure the gpp and the dcd
-echo "Configuring the Node..."
 # nodeconfig was previously run as root; correct permissions on these directories
 find %{_prefix}/dev/nodes -type d -name 'DevMgr_*' -uid 0 -exec chown -R redhawk. {} \;
 /sbin/runuser redhawk -s /bin/bash -c '%{_prefix}/dev/devices/%{name}/cpp/create_node.py --silent \

@@ -92,7 +92,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
                 else:
                     o1=os.popen('pgrep -f '+pname )
                 pid=o1.read()
-                o2=os.popen('cat /proc/'+pid.strip('\n')+'/status | grep Cpus_allowed_list')
+                o2=os.popen('cat /proc/'+pid.split('\n')[0]+'/status | grep Cpus_allowed_list')
             cpus_allowed=o2.read().split()
         except:
             cpus_allowed=[]
