@@ -318,7 +318,7 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     <action type="external"/>
   </simple>
   <simple id="reserved_capacity_per_component" mode="readwrite" type="float">
-    <value>0.25</value>
+    <value>0.1</value>
     <kind kindtype="configure"/>
     <action type="external"/>
   </simple>
