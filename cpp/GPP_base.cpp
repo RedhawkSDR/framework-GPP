@@ -352,6 +352,14 @@ void GPP_base::loadProperties()
                 "external",
                 "property");
 
+    addProperty(utilization,
+                "utilization",
+                "",
+                "readonly",
+                "",
+                "external",
+                "property");
+
 
 }
 

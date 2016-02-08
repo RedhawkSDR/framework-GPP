@@ -410,5 +410,16 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     </simple>
     <configurationkind kindtype="property"/>
   </struct>
+  
+  <structsequence id="utilization" mode="readonly">
+    <struct id="utilization_entry">
+      <simple id="description" type="string"/>
+      <simple id="component_load" type="float"/>
+      <simple id="system_load" type="float"/>
+      <simple id="subscribed" type="float"/>
+      <simple id="maximum" type="float"/>
+    </struct>
+    <configurationkind kindtype="property"/>
+  </structsequence>
 
 </properties>

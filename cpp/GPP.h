@@ -86,10 +86,17 @@ class GPP_i : public GPP_base
 
         int sigchld_handler( int sig );
     protected:
-	struct component_description {
-	  std::string appName;
-	  std::string identifier;
-	};
+        struct component_description {
+            std::string appName;
+            std::string identifier;
+            float reservation;
+            bool        terminated;
+            component_description() : 
+            appName(""), 
+            identifier(""),
+            terminated(false)
+          {};  
+        };
 
         struct LoadCapacity {
           float max;
@@ -135,6 +142,7 @@ class GPP_i : public GPP_base
 
         std::vector<int> getPids();
         component_description getComponentDescription(int pid);
+        void                  markPidTerminated(const int pid );
 
 
          void  set_resource_affinity( const CF::Properties& options,
@@ -155,11 +163,14 @@ class GPP_i : public GPP_base
         typedef std::vector< ThresholdMonitorPtr >            MonitorSequence;
         typedef boost::shared_ptr<SystemMonitor>              SystemMonitorPtr;
         typedef std::map<int, component_description >         ProcessMap;
+        typedef std::map<std::string, int >                   IdPidMap;
         typedef std::vector< component_description >          ProcessList;
 
         void addPid(int pid, std::string appName, std::string identifier);
+        float getProcessTime(int _pid);
+        int getPidFromId(std::string id);
         void removePid(int pid);
-        void addReservation(const component_description &component);
+        void addReservation(const component_description &component, const float reservation);
         void removeReservation(const component_description &component);
         void tableReservation(const component_description &component);
         void restoreReservation(const component_description &component);
@@ -168,8 +179,10 @@ class GPP_i : public GPP_base
         //void sigchld_handler( int sig );
 
         ProcessList                                         reservations;
+        ProcessList                                         partial_reservations;
         ProcessList                                         tabled_reservations;
         ProcessMap                                          pids;
+        IdPidMap                                            id_pids;
         boost::mutex                                        pidLock;
 
         NicFacadePtr                                        nic_facade;
@@ -194,7 +207,7 @@ class GPP_i : public GPP_base
 
  private:
 
-        bool  _component_cleanup( const int pid );
+        bool  _component_cleanup( const int pid, const int exit_status );
 
         //
         // setup execution partitions for launching components

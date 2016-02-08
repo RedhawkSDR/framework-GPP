@@ -79,6 +79,7 @@ class GPP_base : public ExecutableDevice_impl, protected ThreadedComponent
         // Ports
         PropertyEventSupplier *propEvent;
         MessageSupplierPort *MessageEvent_out;
+        std::vector<utilization_entry_struct> utilization;
 
     private:
         void construct();

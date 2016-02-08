@@ -200,6 +200,14 @@ void GPP_i::_init() {
 
   // add property change listener
   addPropertyChangeListener("reserved_capacity_per_component", this, &GPP_i::reservedChanged);
+  
+  utilization_entry_struct cpu;
+  cpu.description = "CPU cores";
+  cpu.component_load = 0;
+  cpu.system_load = 0;
+  cpu.subscribed = 0;
+  cpu.maximum = 0;
+  this->utilization.push_back(cpu);
 
   // tie allocation modifier callbacks to identifiers
 
@@ -220,24 +228,40 @@ void GPP_i::process_ODM(const CORBA::Any &data) {
     boost::mutex::scoped_lock lock(pidLock);
     const ExtendedEvent::ResourceStateChangeEventType* app_state_change;
     if (data >>= app_state_change) {
-        std::string appName = ossie::corba::returnString(app_state_change->sourceName);
+        std::string appId = ossie::corba::returnString(app_state_change->sourceId);
         if (app_state_change->stateChangeTo == ExtendedEvent::STARTED) {
-          RH_NL_TRACE("GPP", "ODM CHANNEL EVENT --> APP STARTED app: " << appName );
-	  for (std::vector<component_description>::iterator it=reservations.begin();it!=reservations.end();it++) {
-	    if ((*it).appName == appName) {
-	      tableReservation(*it);
-	      break;
-	    }
-	  }
+            RH_NL_TRACE("GPP", "ODM CHANNEL EVENT --> APP STARTED app: " << appId );
+                for ( ProcessList::iterator it=reservations.begin();it!=reservations.end(); ) {
+                    if ( it->appName == appId) {
+                        if (it->reservation == -1) {
+                            tabled_reservations.push_back(*it);
+                        } else {
+                            partial_reservations.push_back(*it);
+                        }
+                        it = reservations.erase(it);
+                    } else {
+                        it++;
+                    }
+                }
         } else if (app_state_change->stateChangeTo == ExtendedEvent::STOPPED) {
-          RH_NL_TRACE("GPP", "ODM CHANNEL EVENT --> APP STOPPED app: " << appName );
-	  for (std::vector<component_description>::iterator it=tabled_reservations.begin();it!=tabled_reservations.end();it++) {
-	    if ((*it).appName == appName) {
-	      restoreReservation(*it);
-	      break;
-	    }
-	  }
-	}
+            RH_NL_TRACE("GPP", "ODM CHANNEL EVENT --> APP STOPPED app: " << appId );
+            for ( ProcessList::iterator it=tabled_reservations.begin();it!=tabled_reservations.end(); ) {
+                if ( it->appName == appId) {
+                    reservations.push_back(*it);
+                    it = tabled_reservations.erase(it);
+                } else {
+                    it++;
+                }
+            }
+            for ( ProcessList::iterator it=partial_reservations.begin();it!=partial_reservations.end(); ) {
+                if ( it->appName == appId) {
+                    reservations.push_back(*it);
+                    it = partial_reservations.erase(it);
+                } else {
+                    it++;
+                }
+            }
+        }
     }
 }
 
@@ -495,7 +519,21 @@ CF::ExecutableDevice::ProcessID_Type GPP_i::execute (const char* name, const CF:
 
     std::vector<std::string> prepend_args;
     std::string naming_context_ior;
-    const redhawk::PropertyMap& tmp_params = redhawk::PropertyMap::cast(parameters);
+    CF::Properties variable_parameters;
+    variable_parameters = parameters;
+    redhawk::PropertyMap& tmp_params = redhawk::PropertyMap::cast(variable_parameters);
+    float reservation_value = -1;
+    if (tmp_params.find("RH::GPP::MODIFIED_CPU_RESERVATION_VALUE") != tmp_params.end()) {
+        double reservation_value_d;
+        if (!tmp_params["RH::GPP::MODIFIED_CPU_RESERVATION_VALUE"].getValue(reservation_value)) {
+            if (tmp_params["RH::GPP::MODIFIED_CPU_RESERVATION_VALUE"].getValue(reservation_value_d)) {
+                reservation_value = reservation_value_d;
+            } else {
+                reservation_value = -1;
+            }
+        }
+        tmp_params.erase("RH::GPP::MODIFIED_CPU_RESERVATION_VALUE");
+    }
     naming_context_ior = tmp_params["NAMING_CONTEXT_IOR"].toString();
     std::string app_id;
     std::string component_id = tmp_params["COMPONENT_IDENTIFIER"].toString();
@@ -512,7 +550,7 @@ CF::ExecutableDevice::ProcessID_Type GPP_i::execute (const char* name, const CF:
         } else {
             _app = _appRegistrar->app();
             if (not CORBA::is_nil(_app)) {
-                app_id = ossie::corba::returnString(_app->name());
+                app_id = ossie::corba::returnString(_app->identifier());
             }
         }
     }
@@ -567,9 +605,9 @@ CF::ExecutableDevice::ProcessID_Type GPP_i::execute (const char* name, const CF:
     }
     CF::ExecutableDevice::ProcessID_Type ret_pid;
     try {
-        ret_pid = ExecutableDevice_impl::do_execute(name, options, parameters, prepend_args);
+        ret_pid = ExecutableDevice_impl::do_execute(name, options, tmp_params, prepend_args);
         this->addPid(ret_pid, app_id, component_id);
-        this->addReservation( getComponentDescription(ret_pid) );
+        this->addReservation( getComponentDescription(ret_pid), reservation_value);
     } catch ( ... ) {
         throw;
     }
@@ -578,11 +616,14 @@ CF::ExecutableDevice::ProcessID_Type GPP_i::execute (const char* name, const CF:
 
 void GPP_i::terminate (CF::ExecutableDevice::ProcessID_Type processId) throw (CORBA::SystemException, CF::ExecutableDevice::InvalidProcess, CF::Device::InvalidState)
 {
-    LOG_DEBUG(GPP_i, " Terminate request, processID: " << processId);
+    LOG_TRACE(GPP_i, " Terminate request, processID: " << processId);
     component_description comp;
     try {
+      markPidTerminated( processId );
       ExecutableDevice_impl::terminate(processId);
       comp = getComponentDescription(processId) ;
+      LOG_DEBUG(GPP_i, " Terminate request, App/Identifier/Process: " << 
+              comp.appName << "/" << comp.identifier << "/" << processId);
       removeReservation( comp ) ;
     }
     catch(...){
@@ -590,17 +631,25 @@ void GPP_i::terminate (CF::ExecutableDevice::ProcessID_Type processId) throw (CO
     this->removePid(processId);
 }
 
-bool GPP_i::_component_cleanup( const int child_pid ) {
+bool GPP_i::_component_cleanup( const int child_pid, const int exit_status ) {
   
-  component_description comp;
+ 
   bool ret=false;
+  component_description comp;
   try {
     comp = getComponentDescription(child_pid);
-    LOG_ERROR(GPP_i, " Unexpected Component Failure,  App/Identifier/Process: " << 
-              comp.appName << "/" << comp.identifier << "/" << child_pid);
     removeReservation( comp ) ;
     ret=true;
-    sendChildNotification(comp.identifier, comp.appName);
+    if ( !comp.terminated ) {
+      // release of component can exit process before terminate is called
+      if ( WIFEXITED(exit_status) == 0 ) {
+        LOG_ERROR(GPP_i, " Unexpected Component Failure,  App/Identifier/Process: " << 
+                comp.appName << "/" << comp.identifier << "/" << comp.terminated <<  "/" << child_pid << 
+                " STATUS==" << WIFEXITED(exit_status)  << "," << WEXITSTATUS(exit_status) <<
+                "," <<WIFSIGNALED(exit_status) );
+        sendChildNotification(comp.identifier, comp.appName);
+      }
+    }
   }
   catch(...) {
     // pass.. could be a pid from and popen or system commands..
@@ -1121,10 +1170,116 @@ void GPP_i::updateThresholdMonitors()
 }
 
 
+float GPP_i::getProcessTime(int _pid)
+{
+    std::string comm, state;
+    unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime, cutime, cstime;
+    int pid, ppid, pgrp, session, tty_nr, tpgid;
+    std::stringstream ss;
+    ss<<"/proc/"<<_pid<<"/stat";
+    std::ifstream input(ss.str().c_str());
+    input >> pid >> comm >> state>>ppid>>pgrp>>session>>tty_nr>>tpgid>>flags>>minflt>>cminflt>>majflt>>cmajflt>>utime>>stime>>cutime>>cstime;
+    return ((float)utime + (float)stime + (float)cutime + (float)cstime);
+}
+
 void GPP_i::update()
 {
   boost::mutex::scoped_lock lock(pidLock);
-  this->modified_thresholds.cpu_idle = this->thresholds.cpu_idle + (this->idle_capacity_modifier * this->reservations.size());
+  float reservation_set = 0;
+  for (ProcessList::iterator i=this->reservations.begin(); i!=this->reservations.end(); i++) {
+      if (i->reservation == -1) {
+        reservation_set += this->idle_capacity_modifier;
+      } else {
+        reservation_set += 100.0 * i->reservation/((float)processor_cores);
+      }
+  }
+  // establish what the actual load is per floor_reservation
+  // if the actual load -per is less than the reservation, compute the different and add the difference to the cpu_idle
+  // read the clock from the system (start)
+  std::string cpu;
+  unsigned long user, nice, system, idle, iowait, irq, softirq;
+  {
+    std::ifstream input("/proc/stat");
+    input >> cpu >> user >> nice >> system >> idle >> iowait >> irq >> softirq;
+  }
+  float f_start_total = (float)user+(float)nice+(float)system+(float)idle;
+  float f_use_start_total = (float)user+(float)nice+(float)system;
+  std::vector<float> usages;
+  // read the clock from every process (start)
+  for (ProcessList::iterator i=this->partial_reservations.begin(); i!=this->partial_reservations.end(); i++) {
+    /*std::string comm, state;
+    unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime, cutime, cstime;
+    int pid, ppid, pgrp, session, tty_nr, tpgid;
+    std::stringstream ss;
+    ss<<"/proc/"<<getPidFromId(i->identifier)<<"/stat";
+    std::ifstream input(ss.str().c_str());
+    input >> pid >> comm >> state>>ppid>>pgrp>>session>>tty_nr>>tpgid>>flags>>minflt>>cminflt>>majflt>>cmajflt>>utime>>stime>>cutime>>cstime;
+    usages.push_back((float)utime + (float)stime + (float)cutime + (float)cstime);*/
+    usages.push_back(getProcessTime(getPidFromId(i->identifier)));
+  }
+  for (ProcessList::iterator i=this->tabled_reservations.begin(); i!=this->tabled_reservations.end(); i++) {
+    /*std::string comm, state;
+    unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime, cutime, cstime;
+    int pid, ppid, pgrp, session, tty_nr, tpgid;
+    std::stringstream ss;
+    ss<<"/proc/"<<getPidFromId(i->identifier)<<"/stat";
+    std::ifstream input(ss.str().c_str());
+    input >> pid >> comm >> state>>ppid>>pgrp>>session>>tty_nr>>tpgid>>flags>>minflt>>cminflt>>majflt>>cmajflt>>utime>>stime>>cutime>>cstime;
+    usages.push_back((float)utime + (float)stime + (float)cutime + (float)cstime);*/
+    usages.push_back(getProcessTime(getPidFromId(i->identifier)));
+  }
+  // wait a little bit
+  usleep(500000);
+  // read the clock from the system (stop)
+  {
+    std::ifstream input("/proc/stat");
+    input >> cpu >> user >> nice >> system >> idle >> iowait >> irq >> softirq;
+  }
+  float f_end_total = (float)user+(float)nice+(float)system+(float)idle;
+  float f_use_end_total = (float)user+(float)nice+(float)system;
+  float inverse_load_per_core = ((float)processor_cores)/(f_end_total-f_start_total);
+  // read the clock from every process (stop)
+  std::vector<float>::iterator iusages=usages.begin();
+  float aggregate_usage = 0;
+  for (ProcessList::iterator i=this->partial_reservations.begin(); i!=this->partial_reservations.end(); i++, iusages++) {
+    /*std::string comm, state;
+    unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime, cutime, cstime;
+    int pid, ppid, pgrp, session, tty_nr, tpgid;
+    std::stringstream ss;
+    ss<<"/proc/"<<getPidFromId(i->identifier)<<"/stat";
+    std::ifstream input(ss.str().c_str());
+    input >> pid >> comm >> state>>ppid>>pgrp>>session>>tty_nr>>tpgid>>flags>>minflt>>cminflt>>majflt>>cmajflt>>utime>>stime>>cutime>>cstime;
+    float percent_core = (((float)utime + (float)stime + (float)cutime + (float)cstime)-(*iusages)) * inverse_load_per_core;*/
+    float percent_core = (getProcessTime(getPidFromId(i->identifier))-(*iusages)) * inverse_load_per_core;
+    aggregate_usage += percent_core / inverse_load_per_core;
+    if (percent_core < i->reservation) {
+        reservation_set += 100.0 * (i->reservation - percent_core)/((float)processor_cores);
+    }
+  }
+  aggregate_usage *= inverse_load_per_core;
+  float non_specialized_aggregate_usage = 0;
+  for (ProcessList::iterator i=this->tabled_reservations.begin(); i!=this->tabled_reservations.end(); i++, iusages++) {
+    /*std::string comm, state;
+    unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime, cutime, cstime;
+    int pid, ppid, pgrp, session, tty_nr, tpgid;
+    std::stringstream ss;
+    ss<<"/proc/"<<getPidFromId(i->identifier)<<"/stat";
+    std::ifstream input(ss.str().c_str());
+    input >> pid >> comm >> state>>ppid>>pgrp>>session>>tty_nr>>tpgid>>flags>>minflt>>cminflt>>majflt>>cmajflt>>utime>>stime>>cutime>>cstime;
+    float percent_core = (((float)utime + (float)stime + (float)cutime + (float)cstime)-(*iusages)) * inverse_load_per_core;*/
+    float percent_core = (getProcessTime(getPidFromId(i->identifier))-(*iusages)) * inverse_load_per_core;
+    non_specialized_aggregate_usage += percent_core / inverse_load_per_core;
+    if (percent_core < i->reservation) {
+        reservation_set += 100.0 * (i->reservation - percent_core)/((float)processor_cores);
+    }
+  }
+  non_specialized_aggregate_usage *= inverse_load_per_core;
+  this->modified_thresholds.cpu_idle = this->thresholds.cpu_idle + reservation_set;
+  this->utilization[0].component_load = aggregate_usage + non_specialized_aggregate_usage;
+  float estimate_total = (f_use_end_total-f_use_start_total) * inverse_load_per_core;
+  this->utilization[0].system_load = (this->utilization[0].component_load > estimate_total) ? this->utilization[0].component_load : estimate_total; // for very light loads, sometimes there is a measurement mismatch because of timing
+  this->utilization[0].subscribed = (reservation_set * (float)processor_cores) / 100.0 + this->utilization[0].system_load;
+  this->utilization[0].maximum = processor_cores-(this->thresholds.cpu_idle/100.0) * processor_cores;
   LOG_TRACE(GPP_i, __FUNCTION__ << "ModifyThreshold : " << std::endl << 
            " modified_threshold=" << modified_thresholds.cpu_idle << std::endl << 
            " system: idle: " << system_monitor->get_idle_percent() << std::endl << 
@@ -1199,9 +1354,9 @@ int GPP_i::sigchld_handler(int sig)
           while( (child_pid = waitpid(-1, &status, WNOHANG)) > 0 ) {
             LOG_TRACE(GPP_i, "WAITPID died , pid .................................." << child_pid);
             if ( (uint)child_pid == si.ssi_pid ) reap=true;
-            retv=_component_cleanup( child_pid  );
+            retv=_component_cleanup( child_pid, status );
           }
-          if ( !reap ) { retv=_component_cleanup( si.ssi_pid ); }
+          if ( !reap ) { retv=_component_cleanup( si.ssi_pid, status ); }
         }
         else {
           LOG_TRACE(GPP_i, "read from signalfd --> signo:" << si.ssi_signo);
@@ -1228,6 +1383,19 @@ std::vector<int> GPP_i::getPids()
     return keys;
 }
 
+int GPP_i::getPidFromId(std::string id) {
+    IdPidMap::iterator ii=id_pids.find(id);
+    if (ii == id_pids.end()) {
+        for (ProcessMap::iterator it=pids.begin();it!=pids.end();it++) {
+            if (it->second.identifier == id) {
+                id_pids[id] = it->first;
+                return it->first;
+            }
+        }
+    }
+    return ii->second;
+}
+
 void GPP_i::addPid(int pid, std::string appName, std::string identifier)
 {
     boost::mutex::scoped_lock lock(pidLock);
@@ -1235,6 +1403,7 @@ void GPP_i::addPid(int pid, std::string appName, std::string identifier)
         component_description tmp;
         tmp.appName = appName;
         tmp.identifier = identifier;
+        tmp.reservation = -1;
         pids[pid] = tmp;
     }
 }
@@ -1248,19 +1417,32 @@ GPP_i::component_description GPP_i::getComponentDescription(int pid)
     return it->second;
 }
 
+void GPP_i::markPidTerminated( const int pid)
+{
+    boost::mutex::scoped_lock lock(pidLock);
+    ProcessMap::iterator it=pids.find(pid);
+    if (it == pids.end()) return;
+    it->second.terminated = true;
+}
+
 void GPP_i::removePid(int pid)
 {
     boost::mutex::scoped_lock lock(pidLock);
     ProcessMap::iterator it=pids.find(pid);
     if (it == pids.end())
         return;
+    IdPidMap::iterator ii=id_pids.find(it->second.identifier);
+    if (ii != id_pids.end()) {
+        id_pids.erase(ii);
+    }
     pids.erase(it);
 }
 
-void GPP_i::addReservation( const component_description &component)
+void GPP_i::addReservation( const component_description &component, const float reservation)
 {
     boost::mutex::scoped_lock lock(pidLock);
     this->reservations.push_back(component);
+    this->reservations.back().reservation = reservation;
 }
 
 void GPP_i::removeReservation( const component_description &component)
@@ -1274,13 +1456,20 @@ void GPP_i::removeReservation( const component_description &component)
     if (it != this->tabled_reservations.end()) {
         this->tabled_reservations.erase(it);
     }
+    it = std::find(this->partial_reservations.begin(), this->partial_reservations.end(), component);
+    if (it != this->partial_reservations.end()) {
+        this->partial_reservations.erase(it);
+    }
 }
 
 void GPP_i::tableReservation( const component_description &component)
 {
     ProcessList::iterator it = std::find(this->reservations.begin(), this->reservations.end(), component);
     if (it != this->reservations.end()) {
-        this->tabled_reservations.push_back(*it);
+        if (it->reservation == -1)
+            this->tabled_reservations.push_back(*it);
+        else
+            this->partial_reservations.push_back(*it);
         this->reservations.erase(it);
     }
 }
@@ -1291,6 +1480,11 @@ void GPP_i::restoreReservation( const component_description &component)
     if (it != this->tabled_reservations.end()) {
         this->reservations.push_back(*it);
         this->tabled_reservations.erase(it);
+    }
+    it = std::find(this->partial_reservations.begin(), this->partial_reservations.end(), component);
+    if (it != this->partial_reservations.end()) {
+        this->reservations.push_back(*it);
+        this->partial_reservations.erase(it);
     }
 }
 

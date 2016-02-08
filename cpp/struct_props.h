@@ -1092,5 +1092,76 @@ inline bool operator!= (const ulimit_struct& s1, const ulimit_struct& s2) {
     return !(s1==s2);
 }
 
+struct utilization_entry_struct {
+    utilization_entry_struct ()
+    {
+    };
+
+    static std::string getId() {
+        return std::string("utilization_entry");
+    };
+
+    std::string description;
+    float component_load;
+    float system_load;
+    float subscribed;
+    float maximum;
+};
+
+inline bool operator>>= (const CORBA::Any& a, utilization_entry_struct& s) {
+    CF::Properties* temp;
+    if (!(a >>= temp)) return false;
+    const redhawk::PropertyMap& props = redhawk::PropertyMap::cast(*temp);
+    if (props.contains("description")) {
+        if (!(props["description"] >>= s.description)) return false;
+    }
+    if (props.contains("component_load")) {
+        if (!(props["component_load"] >>= s.component_load)) return false;
+    }
+    if (props.contains("system_load")) {
+        if (!(props["system_load"] >>= s.system_load)) return false;
+    }
+    if (props.contains("subscribed")) {
+        if (!(props["subscribed"] >>= s.subscribed)) return false;
+    }
+    if (props.contains("maximum")) {
+        if (!(props["maximum"] >>= s.maximum)) return false;
+    }
+    return true;
+}
+
+inline void operator<<= (CORBA::Any& a, const utilization_entry_struct& s) {
+    redhawk::PropertyMap props;
+ 
+    props["description"] = s.description;
+ 
+    props["component_load"] = s.component_load;
+ 
+    props["system_load"] = s.system_load;
+ 
+    props["subscribed"] = s.subscribed;
+ 
+    props["maximum"] = s.maximum;
+    a <<= props;
+}
+
+inline bool operator== (const utilization_entry_struct& s1, const utilization_entry_struct& s2) {
+    if (s1.description!=s2.description)
+        return false;
+    if (s1.component_load!=s2.component_load)
+        return false;
+    if (s1.system_load!=s2.system_load)
+        return false;
+    if (s1.subscribed!=s2.subscribed)
+        return false;
+    if (s1.maximum!=s2.maximum)
+        return false;
+    return true;
+}
+
+inline bool operator!= (const utilization_entry_struct& s1, const utilization_entry_struct& s2) {
+    return !(s1==s2);
+}
+
 
 #endif // STRUCTPROPS_H
