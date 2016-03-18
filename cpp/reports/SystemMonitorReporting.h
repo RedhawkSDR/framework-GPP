@@ -23,15 +23,22 @@
 #include <stdint.h>
 #include <boost/shared_ptr.hpp>
 #include "Reporting.h"
-#include "statistics/Statistics.h"
+#include "statistics/CpuUsageStats.h"
 #include "states/ProcMeminfo.h"
 #include "states/Limits.h"
 
 class SystemMonitor : public Reporting
 {
  public: 
-  typedef boost::shared_ptr< CpuStatistics >  CpuStatsPtr;
+  typedef boost::shared_ptr< CpuUsageStats >  CpuStatsPtr;
   typedef boost::shared_ptr< ProcMeminfo >    MemInfoPtr;
+  typedef CpuUsageStats::CpuList              CpuList;
+
+  struct loadavg {
+      double  one_min;
+      double  five_min;
+      double fifteen_min;
+  };
 
   struct Report {
     uint64_t virtual_memory_total;
@@ -42,6 +49,8 @@ class SystemMonitor : public Reporting
     uint64_t physical_memory_used;
     uint64_t physical_memory_free;
     double   physical_memory_percent;
+    uint64_t all_usage;
+    uint64_t user_usage;
     double   cpu_percent;
     double   user_cpu_percent;
     double   system_cpu_percent;
@@ -49,9 +58,13 @@ class SystemMonitor : public Reporting
     double   up_time;
     Limits::Contents  sys_limits;  
     double   last_update_time;
+    loadavg  load;
   };
   
 public:
+  SystemMonitor( const CpuList &cpu_list );
+
+
   SystemMonitor( const CpuStatsPtr & cpu_usage_stats,
                  const MemInfoPtr  & mem_usage_state,
                  const SysLimitsPtr& sys_limit );
@@ -59,11 +72,13 @@ public:
   double   get_idle_percent() const;
   double   get_idle_average() const;
   uint64_t get_mem_free() const;
+  uint64_t get_phys_free() const;
+  uint64_t get_all_usage() const;
+  uint64_t get_user_usage() const;
+  double   get_loadavg() const;
   const Report &getReport() const;
   void report();
-    
-private:
-    std::string format_up_time(unsigned long secondsUp) const;
+  const CpuStatsPtr getCpuStats() const;
     
 private:
     CpuStatsPtr     cpu_usage_stats_;

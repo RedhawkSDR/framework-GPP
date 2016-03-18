@@ -27,6 +27,14 @@
 
 static const size_t BYTES_PER_MEGABYTE = 1024*1024;
 
+SystemMonitor::SystemMonitor( const CpuList & cpu_list ):
+  cpu_usage_stats_( new CpuUsageStats(cpu_list) ),
+    mem_usage_state_(new ProcMeminfo()),
+    sys_limit_state_(new SysLimits())
+{
+  report();
+}
+
 SystemMonitor::SystemMonitor( const CpuStatsPtr & cpu_usage_stats,
                               const MemInfoPtr &mem_usage_state,
                               const SysLimitsPtr &sys_limit ) :
@@ -49,8 +57,28 @@ uint64_t SystemMonitor::get_mem_free() const {
  return report_.virtual_memory_free;
 }
 
+uint64_t SystemMonitor::get_phys_free() const {
+ return report_.physical_memory_free;
+}
+
+uint64_t SystemMonitor::get_all_usage() const {
+ return report_.all_usage;
+}
+
+uint64_t SystemMonitor::get_user_usage() const {
+ return report_.user_usage;
+}
+
+double SystemMonitor::get_loadavg() const {
+  return report_.load.one_min;
+}
+
 const SystemMonitor::Report &SystemMonitor::getReport() const {
   return report_;
+}
+
+const SystemMonitor::CpuStatsPtr SystemMonitor::getCpuStats() const {
+  return cpu_usage_stats_;
 }
 
 void
@@ -65,14 +93,13 @@ SystemMonitor::report()
     sys_limit_state_->update();
     const ProcMeminfo::Contents &mem_stats = mem_usage_state_->get();
     report_.virtual_memory_total = mem_stats.at("MemTotal")+ mem_stats.at("SwapTotal");
-    report_.virtual_memory_free =  (mem_stats.at("MemTotal") + mem_stats.at("SwapTotal") ) - mem_stats.at("Committed_AS");
+    report_.virtual_memory_free =  mem_stats.at("MemFree") + mem_stats.at("SwapFree");
     report_.physical_memory_total = mem_stats.at("MemTotal");
     report_.physical_memory_free = mem_stats.at("MemFree");
   }
   catch(...){
     report_.virtual_memory_total = (info.totalram+info.totalswap) * info.mem_unit;
     report_.virtual_memory_free = (info.freeram+info.freeswap) * info.mem_unit;
-
     report_.physical_memory_total = info.totalram * info.mem_unit;
     report_.physical_memory_free = info.freeram * info.mem_unit;
   }
@@ -88,29 +115,11 @@ SystemMonitor::report()
   report_.up_time = info.uptime;
   report_.last_update_time = time(NULL);
   report_.idle_cpu_percent = cpu_usage_stats_->get_idle_percent();
-
+  report_.all_usage = cpu_usage_stats_->get_all_usage();
+  report_.user_usage = cpu_usage_stats_->get_user_usage();
   report_.sys_limits = sys_limit_state_->get();
-}
-
-std::string
-SystemMonitor::format_up_time(unsigned long secondsUp) const
-{
-	std::stringstream formattedUptime;
-	int days;
-	int hours;
-	int minutes;
-	int seconds;
-
-	int leftover;
-
-	days = (int) secondsUp / (60 * 60 * 24);
-	leftover = (int) secondsUp - (days * (60 * 60 * 24) );
-	hours = (int) leftover / (60 * 60);
-	leftover = leftover - (hours * (60 * 60) );
-	minutes = (int) leftover / 60;
-	seconds = leftover - (minutes * 60);
-
-	formattedUptime << days << "d " << hours << "h " << minutes << "m " << seconds << "s";
-
-	return formattedUptime.str();
+  report_.load.one_min = info.loads[0] * 1.0/(1<<SI_LOAD_SHIFT);
+  report_.load.five_min = info.loads[1] * 1.0/(1<<SI_LOAD_SHIFT);
+  report_.load.fifteen_min = info.loads[2] * 1.0/(1<<SI_LOAD_SHIFT);
+  
 }

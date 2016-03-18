@@ -57,6 +57,21 @@ with this program.  If not, see http://www.gnu.org/licenses/.
     <kind kindtype="event"/>
     <action type="external"/>
   </simple>
+  <simple id="DCE:218e612c-71a7-4a73-92b6-bf70959aec45" mode="readwrite" name="useScreen" type="boolean" complex="false">
+    <description>If true, GNU screen will be used for the execution of components.</description>
+    <value>False</value>
+    <kind kindtype="execparam"/>
+    <action type="external"/>
+  </simple>
+
+  <simple id="DCE:c80f6c5a-e3ea-4f57-b0aa-46b7efac3176" mode="readwrite" name="componentOutputLog" type="string">
+    <description>If provided, all component output will be redirected to this file.  The GPP will not delete or rotate these logs.  The provided value may contain environment variables or reference component exec-params with @EXEC_PARAM@.  For example, this would be a valid value $SDRROOT/logs/@COMPONENT_IDENTIFIER@.log</description>
+    <value></value>
+    <kind kindtype="property"/>
+    <action type="external"/>
+  </simple>
+
+
   <struct id="nic_allocation" mode="readwrite" name="nic_allocation">
     <description>DCE:e4e86070-a121-45d4-a144-00386f2188e3</description>
     <simple id="nic_allocation::identifier" name="identifier" type="string">
@@ -179,29 +194,64 @@ Optional</description>
     </struct>
     <configurationkind kindtype="configure"/>
   </structsequence>
-  <simple id="DCE:218e612c-71a7-4a73-92b6-bf70959aec45" mode="readwrite" name="useScreen" type="boolean" complex="false">
-    <description>If true, GNU screen will be used for the execution of components.</description>
-    <value>False</value>
+
+  <simple id="DCE:4e416acc-3144-47eb-9e38-97f1d24f7700" mode="readwrite" name="mcastnicInterface" type="string">
+    <description>The Multicast NIC interface associated with this GPP (e.g. eth1).  If not provided no multicast allocations are permitted.</description>
+    <value></value>
     <kind kindtype="execparam"/>
     <action type="external"/>
   </simple>
-  <simple id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056" mode="readwrite" name="loadCapacity" type="double" complex="false">
-    <description>The amount of load capacity remaining to be allocated.</description>
-    <kind kindtype="allocation"/>
+  <simple id="DCE:5a41c2d3-5b68-4530-b0c4-ae98c26c77ec" mode="readwrite" name="mcastnicIngressTotal" type="long">
+    <description>Total NIC bandwidth for the interfaces defined in mcastnicInterface.  This must be specified in the PRF or DCD because ethtool requires super-user privs.</description>
+    <value>0</value>
+    <units>Mb/s</units>
+    <kind kindtype="execparam"/>
     <action type="external"/>
   </simple>
-  <simple id="DCE:506102d6-04a9-4532-9420-a323d818ddec" mode="readwrite" name="mcastnicIngressCapacity" type="long" complex="false">
+  <simple id="DCE:442d5014-2284-4f46-86ae-ce17e0749da0" mode="readwrite" name="mcastnicEgressTotal" type="long">
+    <description>Total NIC bandwidth for the interfaces defined in mcastnicInterface.  This must be specified in the PRF or DCD because ethtool requires super-user privs.</description>
+    <value>0</value>
+    <units>Mb/s</units>
+    <kind kindtype="execparam"/>
+    <action type="external"/>
+  </simple>
+  <simple id="DCE:506102d6-04a9-4532-9420-a323d818ddec" mode="readwrite" name="mcastnicIngressCapacity" type="long">
     <description>Amount of ingress multicast NIC capacity in the GPP not allocated to an application</description>
     <units>Mb/s</units>
     <kind kindtype="allocation"/>
+    <kind kindtype="event"/>
     <action type="external"/>
   </simple>
-  <simple id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb" mode="readwrite" name="memCapacity" type="longlong" complex="false">
-    <description>Amount of RAM in the GPP not allocated to an application</description>
-    <units>MiB</units>
+  <simple id="DCE:eb08e43f-11c7-45a0-8750-edff439c8b24" mode="readwrite" name="mcastnicEgressCapacity" type="long">
+    <description>Amount of egress multicast NIC capacity in the GPP not allocated to an application</description>
+    <units>Mb/s</units>
+    <kind kindtype="allocation"/>
+    <kind kindtype="event"/>
+    <action type="external"/>
+  </simple>
+  <simple id="DCE:0b57a27a-8fa2-412b-b0ae-010618b8f40e" mode="readonly" name="mcastnicIngressFree" type="long">
+    <description>Free NIC bandwidth for the interfaces defined in mcastnicInterface.</description>
+    <value>0</value>
+    <units>Mb/s</units>
+    <kind kindtype="configure"/>
+    <kind kindtype="event"/>
+    <action type="external"/>
+  </simple>
+  <simple id="DCE:9b5bbdcb-1894-4b95-847c-787f121c05ae" mode="readonly" name="mcastnicEgressFree" type="long">
+    <description>Free NIC bandwidth for the interfaces defined in mcastnicInterface.</description>
+    <value>0</value>
+    <units>Mb/s</units>
+    <kind kindtype="configure"/>
+    <kind kindtype="event"/>
+    <action type="external"/>
+  </simple>
+
+  <simplesequence id="DCE:65544aad-4c73-451f-93de-d4d76984025a" mode="readwrite" name="mcastnicVLANs" type="long">
+    <description>When queired, returns the list of vlans on this host.  When used as an allocation, defines the list of VLANS the component requires.</description>
     <kind kindtype="allocation"/>
     <action type="external"/>
-  </simple>
+  </simplesequence>
+
   <struct id="advanced" mode="readwrite">
     <simple id="maximum_throughput_percentage" type="double">
       <value>80.0</value>
@@ -230,6 +280,7 @@ Optional</description>
     </struct>
     <configurationkind kindtype="configure"/>
   </structsequence>
+
   <struct id="threshold_event" mode="readonly">
     <simple id="threshold_event::source_id" name="source_id" type="string">
       <description>Identifier of component or device that generated this message</description>
@@ -264,10 +315,25 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     </simple>
     <configurationkind kindtype="message"/>
   </struct>
+
+  <simple id="threshold_cycle_time" mode="readwrite" name="threshold_cycle_time" type="ulong">
+    <description>cycle time between updates of metric capture, calculations and threshold evaluations.</description>
+    <value>500</value>
+    <units>milliseconds</units>
+    <kind kindtype="property"/>
+    <action type="external"/>
+  </simple>
+
   <struct id="thresholds" mode="readwrite">
-    <description>The thresholds that cause a failure for pawn allocations</description>
+    <description>The thresholds that cause a failure for allocations</description>
     <simple id="cpu_idle" type="float">
       <value>10</value>
+      <units>%</units>
+      <kind kindtype="property"/>
+      <action type="external"/>
+    </simple>
+    <simple id="load_avg" type="float">
+      <value>80</value>
       <units>%</units>
       <kind kindtype="property"/>
       <action type="external"/>
@@ -300,28 +366,133 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     </simple>
     <configurationkind kindtype="property"/>
   </struct>
+
+  <simple id="DCE:6565bffd-cb09-4927-9385-2ecac68035c7" mode="readonly" name="memFree" type="longlong">
+    <description>Amount of RAM in the GPP not in use (measured)</description>
+    <units>MiB</units>
+    <kind kindtype="configure"/>
+    <kind kindtype="event"/>
+    <action type="external"/>
+  </simple>
+  <simple id="DCE:8dcef419-b440-4bcf-b893-cab79b6024fb" mode="readwrite" name="memCapacity" type="longlong" complex="false">
+    <description>Amount of RAM in the GPP not allocated to an application</description>
+    <units>MiB</units>
+    <kind kindtype="allocation"/>
+    <action type="external"/>
+  </simple>
+  <simple id="DCE:28b23bc8-e4c0-421b-9c52-415a24715209" mode="readonly" name="loadTotal" type="double">
+    <description>Equal to &quot;processor_cores&quot; x &quot;loadCapacityPerCore&quot;.</description>
+    <kind kindtype="configure"/>
+    <action type="external"/>
+  </simple>
   <simple id="DCE:3bf07b37-0c00-4e2a-8275-52bd4e391f07" mode="readwrite" name="loadCapacityPerCore" type="double">
+    <description>The performance ratio of this machine, relative to the benchmark machine.</description>
     <value>1.0</value>
     <kind kindtype="execparam"/>
     <kind kindtype="allocation"/>
     <action type="gt"/>
   </simple>
-  <simple id="processor_cores" mode="readonly" type="short">
-    <kind kindtype="configure"/>
-    <action type="external"/>
-  </simple>
   <simple id="DCE:22a60339-b66e-4309-91ae-e9bfed6f0490" mode="readwrite" name="loadThreshold" type="long">
+    <description>deprecated</description>
     <value>80</value>
     <units>%</units>
     <kind kindtype="configure"/>
     <kind kindtype="event"/>
     <action type="external"/>
   </simple>
-  <simple id="reserved_capacity_per_component" mode="readwrite" type="float">
-    <value>0.1</value>
+  <simple id="DCE:6c000787-6fea-4765-8686-2e051e6c24b0" mode="readonly" name="loadFree" type="double">
+    <description>Equal to loadCapacity</description>
+    <kind kindtype="configure"/>
+    <kind kindtype="event"/>
+    <action type="external"/>
+  </simple>
+  <simple id="DCE:72c1c4a9-2bcf-49c5-bafd-ae2c1d567056" mode="readwrite" name="loadCapacity" type="double">
+    <description>The amount of load capacity remaining to be allocated.</description>
+    <kind kindtype="allocation"/>
+    <kind kindtype="event"/>
+    <action type="external"/>
+  </simple>
+
+  <struct id="DCE:9da85ebc-6503-48e7-af36-b77c7ad0c2b4" mode="readonly" name="loadAverage">
+    <description>The current load average, as reported by /proc/loadavg.  Each core on a computer can have a load average between 0.0 and 1.0.  This differs greatly from CPU percentage (as reported by top).  Load averages differ in two significant ways: 1) they measure the trend of CPU utlization, and 2) they include all demand for the CPU not only how much was active at the time of measurement.  Load averages do not include any processes or threads waiting on I/O, networking, databases, or anything else not demanding the CPU.</description>
+    <simple id="onemin" mode="readwrite" name="onemin" type="double">
+      <kind kindtype="configure"/>
+      <action type="external"/>
+    </simple>
+    <simple id="fivemin" mode="readwrite" name="fivemin" type="double">
+      <kind kindtype="configure"/>
+      <action type="external"/>
+    </simple>
+    <simple id="fifteenmin" mode="readwrite" name="fifteenmin" type="double">
+      <kind kindtype="configure"/>
+      <action type="external"/>
+    </simple>
+    <configurationkind kindtype="configure"/>
+    <configurationkind kindtype="event"/>
+  </struct>
+
+  <simple id="reserved_capacity_per_component" name="reserved_capacity_per_component" mode="readwrite" type="float">
+    <value>0.0</value>
     <kind kindtype="configure"/>
     <action type="external"/>
   </simple>
+
+  <simple id="processor_cores" mode="readonly" type="short">
+    <kind kindtype="configure"/>
+    <action type="external"/>
+  </simple>
+
+  <simple id="processor_monitor_list" mode="readonly" type="string">
+    <description>list of cpu ids that are being monitored for loadavg and idle utilization.</description>
+    <kind kindtype="configure"/>
+    <action type="external"/>
+  </simple>
+
+  <struct id="gpp_limits" mode="readonly">
+    <simple id="current_threads" type="long">
+      <description>The current number of threads for the GPP</description>
+    </simple>
+    <simple id="max_threads" type="long">
+      <description>The maximum number of threads allowed for the GPP</description>
+    </simple>
+    <simple id="current_open_files" type="long">
+      <description>The current number of open file handles for the GPP</description>
+    </simple>
+    <simple id="max_open_files" type="long">
+      <description>The maximum number of open file handles allowed for the GPP</description>
+    </simple>
+    <configurationkind kindtype="property"/>
+  </struct>
+
+  <struct id="sys_limits" mode="readonly">
+    <simple id="current_threads" type="long">
+      <description>The current number of threads running on the system</description>
+    </simple>
+    <simple id="max_threads" type="long">
+      <description>The maximum number of threads allowed to run on the system</description>
+    </simple>
+    <simple id="current_open_files" type="long">
+      <description>The current number of open file on the system.</description>
+    </simple>
+    <simple id="max_open_files" type="long">
+      <description>The maximum number of open file handles allowed for the system</description>
+    </simple>
+    <configurationkind kindtype="property"/>
+  </struct>
+  
+  <structsequence id="utilization" mode="readonly">
+    <struct id="utilization_entry">
+      <simple id="description" type="string"/>
+      <simple id="component_load" type="float"/>
+      <simple id="system_load" type="float"/>
+      <simple id="subscribed" type="float"/>
+      <simple id="maximum" type="float"/>
+    </struct>
+    <configurationkind kindtype="property"/>
+  </structsequence>
+
+
+
   <struct id="affinity" mode="readwrite">
     <simple id="affinity::exec_directive_value" mode="readwrite" name="exec_directive_value" type="string" optional="false">
       <description>The context specification for the exec_directive_class.   See numa library manpage for socket(numa node) and cpu list specifications.  For cgroup/cpuset option then a pre-existing cgroup name is required.</description>
@@ -367,59 +538,6 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
     </simple>
     <configurationkind kindtype="property"/>
   </struct>
-  <simple id="processor_monitor_list" mode="readonly" type="string">
-    <description>list of cpu ids that are being monitored for loadavg and idle utilization.</description>
-    <kind kindtype="configure"/>
-    <action type="external"/>
-  </simple>
-  <simple id="threshold_cycle_time" mode="readwrite" name="threshold_cycle_time" type="ulong">
-    <description>cycle time between updates of metric capture, calculations and threshold evaluations.</description>
-    <value>500</value>
-    <units>milliseconds</units>
-    <kind kindtype="property"/>
-    <action type="external"/>
-  </simple>
-  <struct id="gpp_limits" mode="readonly">
-    <simple id="current_threads" type="long">
-      <description>The current number of threads for the GPP</description>
-    </simple>
-    <simple id="max_threads" type="long">
-      <description>The maximum number of threads allowed for the GPP</description>
-    </simple>
-    <simple id="current_open_files" type="long">
-      <description>The current number of open file handles for the GPP</description>
-    </simple>
-    <simple id="max_open_files" type="long">
-      <description>The maximum number of open file handles allowed for the GPP</description>
-    </simple>
-    <configurationkind kindtype="property"/>
-  </struct>
 
-  <struct id="sys_limits" mode="readonly">
-    <simple id="current_threads" type="long">
-      <description>The current number of threads running on the system</description>
-    </simple>
-    <simple id="max_threads" type="long">
-      <description>The maximum number of threads allowed to run on the system</description>
-    </simple>
-    <simple id="current_open_files" type="long">
-      <description>The current number of open file on the system.</description>
-    </simple>
-    <simple id="max_open_files" type="long">
-      <description>The maximum number of open file handles allowed for the system</description>
-    </simple>
-    <configurationkind kindtype="property"/>
-  </struct>
-  
-  <structsequence id="utilization" mode="readonly">
-    <struct id="utilization_entry">
-      <simple id="description" type="string"/>
-      <simple id="component_load" type="float"/>
-      <simple id="system_load" type="float"/>
-      <simple id="subscribed" type="float"/>
-      <simple id="maximum" type="float"/>
-    </struct>
-    <configurationkind kindtype="property"/>
-  </structsequence>
 
 </properties>

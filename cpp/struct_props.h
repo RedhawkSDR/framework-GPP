@@ -331,11 +331,13 @@ inline bool operator!= (const threshold_event_struct& s1, const threshold_event_
     return !(s1==s2);
 };
 
+
 struct thresholds_struct {
     thresholds_struct ()
     {
         cpu_idle = 10;
-        mem_free = 100;
+        load_avg = 80;
+        mem_free = 100LL;
         nic_usage = 900;
         files_available = 3;
         threads = 3;
@@ -346,6 +348,7 @@ struct thresholds_struct {
     };
 
     float cpu_idle;
+    float load_avg;
     CORBA::LongLong mem_free;
     CORBA::Long nic_usage;
     float files_available;
@@ -358,6 +361,9 @@ inline bool operator>>= (const CORBA::Any& a, thresholds_struct& s) {
     const redhawk::PropertyMap& props = redhawk::PropertyMap::cast(*temp);
     if (props.contains("cpu_idle")) {
         if (!(props["cpu_idle"] >>= s.cpu_idle)) return false;
+    }
+    if (props.contains("load_avg")) {
+        if (!(props["load_avg"] >>= s.load_avg)) return false;
     }
     if (props.contains("mem_free")) {
         if (!(props["mem_free"] >>= s.mem_free)) return false;
@@ -372,20 +378,29 @@ inline bool operator>>= (const CORBA::Any& a, thresholds_struct& s) {
         if (!(props["threads"] >>= s.threads)) return false;
     }
     return true;
-};
+}
 
 inline void operator<<= (CORBA::Any& a, const thresholds_struct& s) {
     redhawk::PropertyMap props;
+ 
     props["cpu_idle"] = s.cpu_idle;
+ 
+    props["load_avg"] = s.load_avg;
+ 
     props["mem_free"] = s.mem_free;
+ 
     props["nic_usage"] = s.nic_usage;
+ 
     props["files_available"] = s.files_available;
+ 
     props["threads"] = s.threads;
     a <<= props;
-};
+}
 
 inline bool operator== (const thresholds_struct& s1, const thresholds_struct& s2) {
     if (s1.cpu_idle!=s2.cpu_idle)
+        return false;
+    if (s1.load_avg!=s2.load_avg)
         return false;
     if (s1.mem_free!=s2.mem_free)
         return false;
@@ -396,11 +411,11 @@ inline bool operator== (const thresholds_struct& s1, const thresholds_struct& s2
     if (s1.threads!=s2.threads)
         return false;
     return true;
-};
+}
 
 inline bool operator!= (const thresholds_struct& s1, const thresholds_struct& s2) {
     return !(s1==s2);
-};
+}
 
 struct nic_allocation_status_struct_struct {
     nic_allocation_status_struct_struct ()
@@ -1160,6 +1175,60 @@ inline bool operator== (const utilization_entry_struct& s1, const utilization_en
 }
 
 inline bool operator!= (const utilization_entry_struct& s1, const utilization_entry_struct& s2) {
+    return !(s1==s2);
+}
+struct loadAverage_struct {
+    loadAverage_struct ()
+    {
+    };
+
+    static std::string getId() {
+        return std::string("DCE:9da85ebc-6503-48e7-af36-b77c7ad0c2b4");
+    };
+
+    double onemin;
+    double fivemin;
+    double fifteenmin;
+};
+
+inline bool operator>>= (const CORBA::Any& a, loadAverage_struct& s) {
+    CF::Properties* temp;
+    if (!(a >>= temp)) return false;
+    const redhawk::PropertyMap& props = redhawk::PropertyMap::cast(*temp);
+    if (props.contains("onemin")) {
+        if (!(props["onemin"] >>= s.onemin)) return false;
+    }
+    if (props.contains("fivemin")) {
+        if (!(props["fivemin"] >>= s.fivemin)) return false;
+    }
+    if (props.contains("fifteenmin")) {
+        if (!(props["fifteenmin"] >>= s.fifteenmin)) return false;
+    }
+    return true;
+}
+
+inline void operator<<= (CORBA::Any& a, const loadAverage_struct& s) {
+    redhawk::PropertyMap props;
+
+    props["onemin"] = s.onemin;
+
+    props["fivemin"] = s.fivemin;
+
+    props["fifteenmin"] = s.fifteenmin;
+    a <<= props;
+}
+
+inline bool operator== (const loadAverage_struct& s1, const loadAverage_struct& s2) {
+    if (s1.onemin!=s2.onemin)
+        return false;
+    if (s1.fivemin!=s2.fivemin)
+        return false;
+    if (s1.fifteenmin!=s2.fifteenmin)
+        return false;
+    return true;
+}
+
+inline bool operator!= (const loadAverage_struct& s1, const loadAverage_struct& s2) {
     return !(s1==s2);
 }
 
