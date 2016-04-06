@@ -417,7 +417,7 @@ void GPP_base::loadProperties()
                 "allocation,event");
 
     addProperty(reserved_capacity_per_component,
-                0.0,
+                0.1,
                 "reserved_capacity_per_component",
                 "reserved_capacity_per_component",
                 "readwrite",

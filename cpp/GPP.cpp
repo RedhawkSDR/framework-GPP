@@ -1461,7 +1461,6 @@ int GPP_i::serviceFunction()
   std::for_each( threshold_monitors.begin(), threshold_monitors.end(), boost::bind( &Updateable::update, _1 ) );
 
   for( size_t i=0; i<threshold_monitors.size(); ++i ) {
-    threshold_monitors[i]->update();
     LOG_TRACE(GPP_i, __FUNCTION__ << ": resource_id=" << threshold_monitors[i]->get_resource_id() << 
               " threshold=" << threshold_monitors[i]->get_threshold() << " measured=" << threshold_monitors[i]->get_measured());
   }
@@ -1959,7 +1958,7 @@ void GPP_i::update()
       }
     }
   }
-  LOG_TRACE(GPP_i, __FUNCTION__ << " Completed first pass, record pstats for nproc: " << nres );
+  LOG_TRACE(GPP_i, __FUNCTION__ << " Completed first pass, record pstats for nproc: " << nres << " res_set " << reservation_set );
 
   // set number reservations that are not started
   n_reservations = nres;
@@ -1974,7 +1973,7 @@ void GPP_i::update()
   float f_use_end_total = (float)(user);
   float f_total = f_end_total-f_start_total;
   if ( f_total <= 0.0 ) {
-    LOG_INFO(GPP_i, __FUNCTION__ << std::endl<< " System Ticks end/start " << f_end_total << "/" << f_start_total << std::endl );
+    LOG_TRACE(GPP_i, __FUNCTION__ << std::endl<< " System Ticks end/start " << f_end_total << "/" << f_start_total << std::endl );
     f_total=1.0;
   }
   float inverse_load_per_core = ((float)processor_cores)/(f_total);
@@ -2037,7 +2036,7 @@ void GPP_i::update()
   utilization[0].component_load = aggregate_usage + non_specialized_aggregate_usage;
   float estimate_total = (f_use_end_total-f_use_start_total) * inverse_load_per_core;
   utilization[0].system_load = (utilization[0].component_load > estimate_total) ? utilization[0].component_load : estimate_total; // for very light loads, sometimes there is a measurement mismatch because of timing
-  utilization[0].subscribed = (reservation_set * (float)processor_cores) / 100.0 + utilization[0].system_load;
+  utilization[0].subscribed = (reservation_set * (float)processor_cores) / 100.0 + utilization[0].component_load;
   utilization[0].maximum = processor_cores-(thresholds.cpu_idle/100.0) * processor_cores;
 
   LOG_DEBUG(GPP_i, __FUNCTION__ << " LOAD aand IDLE : " << std::endl << 

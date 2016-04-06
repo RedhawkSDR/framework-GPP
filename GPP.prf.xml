@@ -339,7 +339,7 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
       <action type="external"/>
     </simple>
     <simple id="mem_free" mode="readwrite" type="longlong">
-      <value>100</value>
+      <value>10</value>
       <units>MB</units>
       <kind kindtype="property"/>
       <action type="external"/>
@@ -432,7 +432,7 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
   </struct>
 
   <simple id="reserved_capacity_per_component" name="reserved_capacity_per_component" mode="readwrite" type="float">
-    <value>0.0</value>
+    <value>0.1</value>
     <kind kindtype="configure"/>
     <action type="external"/>
   </simple>

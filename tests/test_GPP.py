@@ -53,6 +53,14 @@ numa_match={ "all" : "0-31",
              "8-10" : "8-10" }
 numa_layout=[ "0-7,16-23", "8-15,24-31" ]
 
+affinity_test_src={ "all" : "0-31",
+                 "sock0": "0",
+                 "sock1": "1", 
+                 "sock0sans0": "0", 
+                 "5" : "5",
+                 "8-10" : "8,9,10",
+                 "eface" : "em1" }
+
 def get_match( key="all" ):
     if key and  key in numa_match:
         return numa_match[key]
@@ -557,19 +565,19 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
 
 
     def testNicAffinity(self):
-        self.DeployWithAffinityOptions( [ CF.DataType(id='nic',value=any.to_any('em1')) ], "sock0", '' )
+        self.DeployWithAffinityOptions( [ CF.DataType(id='nic',value=any.to_any(affinity_test_src['eface'])) ], "sock0", '' )
 
     def testNicAffinityWithBlackList(self):
-        self.DeployWithAffinityOptions( [ CF.DataType(id='nic',value=any.to_any('em1')) ], "sock0sans0", '0' )
+        self.DeployWithAffinityOptions( [ CF.DataType(id='nic',value=any.to_any(affinity_test_src['eface'])) ], "sock0sans0", '0' )
 
     def testCpuAffinity(self):
         if maxcpus > 6:
             self.DeployWithAffinityOptions( [ CF.DataType(id='affinity::exec_directive_class',value=any.to_any('cpu')),
-                                              CF.DataType(id='affinity::exec_directive_value',value=any.to_any('5')) ], "5", '' )
+                                              CF.DataType(id='affinity::exec_directive_value',value=any.to_any(affinity_test_src['5'])) ], "5", '' )
 
     def testSocketAffinity(self):
         self.DeployWithAffinityOptions( [ CF.DataType(id='affinity::exec_directive_class',value=any.to_any('socket')),
-                               CF.DataType(id='affinity::exec_directive_value',value=any.to_any('1')) ], 
+                               CF.DataType(id='affinity::exec_directive_value',value=any.to_any(affinity_test_src['sock1'])) ], 
                                         "sock1", '0' )
 
     def testDeployOnSocket(self):
@@ -939,10 +947,14 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         self.assertEqual(self.comp_obj._is_a("IDL:CF/ExecutableDevice:1.0"), True)
         #self.assertEqual(self.spd.get_id(), self.comp_obj._get_identifier())
         
-    def close(self, value_1, value_2, margin = 0.05):
+    def close(self, value_1, value_2, margin = 0.01):
         if (value_2 * (1-margin)) < value_1 and (value_2 * (1+margin)) > value_1:
             return True
         return False
+
+    def float_eq(self, a,b,eps=0.0000001):
+        return abs(a-b) < eps
+
     
     def testSystemReservation(self):
         copyfile(self.orig_sdrroot+'/dom/mgr/DomainManager', 'sdr/dom/mgr/DomainManager')
@@ -957,9 +969,11 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         self.assertEquals(os.path.isfile('sdr/dev/mgr/DeviceManager'),True)
         self._domainBooter, domMgr = self.launchDomainManager(domain_name='REDHAWK_TEST_'+str(os.getpid()))
         self._deviceBooter, devMgr = self.launchDeviceManager("sdr/dev/nodes/DevMgr_sample/DeviceManager.dcd.xml", domainManager=self.dom.ref)
+        self.comp= self.dom.devMgrs[0].devs[0]
         cpus = self.dom.devMgrs[0].devs[0].processor_cores
         cpu_thresh = self.dom.devMgrs[0].devs[0].thresholds.cpu_idle
         res_per_comp = self.dom.devMgrs[0].devs[0].reserved_capacity_per_component
+        idle_cap_mod = 100.0  * res_per_comp / (cpus*1.0)
         upper_capacity = cpus - (cpus * (cpu_thresh/100))
         wait_amount = (self.dom.devMgrs[0].devs[0].threshold_cycle_time / 1000.0) * 4
         time.sleep(wait_amount)
@@ -978,14 +992,19 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         base_util = self.dom.devMgrs[0].devs[0].utilization[0]
         system_load_now = base_util['system_load']
         sub_now = base_util['subscribed']
-        self.assertEquals(self.close(subscribed+extra_reservation+(system_load_now-system_load_base), sub_now), True)
+        comp_load = base_util['component_load']
+        #print "After App1 Create subnow(sub) " , sub_now, " sys_load", system_load_now, " sys_load_base ", system_load_base, " comp_load ", comp_load, " subscribed(base) ", subscribed, " extra ", extra_reservation, " res per", res_per_comp, " idle cap mod ", idle_cap_mod 
+        self.assertEquals(self.close(sub_now, extra_reservation), True)
         
         app_2=self.dom.createApplication('/waveforms/busy_w/busy_w.sad.xml','busy_w',[])
         time.sleep(wait_amount)
         base_util = self.dom.devMgrs[0].devs[0].utilization[0]
         system_load_now = base_util['system_load']
         sub_now = base_util['subscribed']
-        self.assertEquals(self.close(subscribed+extra_reservation+res_per_comp+(system_load_now-system_load_base), sub_now), True)
+        sub_now_pre = base_util['subscribed']
+        comp_load = base_util['component_load']
+        #print "After App2 Create subnow(sub) " , sub_now, " sys_load", system_load_now, " sys_load_base ", system_load_base, " comp_load ", comp_load, " subscribed(base) ", subscribed, " extra ", extra_reservation, " res per", res_per_comp, " idle cap mod ", idle_cap_mod 
+        self.assertEquals(self.close(sub_now, extra_reservation+res_per_comp), True)
 
         app_1.start()
         time.sleep(wait_amount)
@@ -993,7 +1012,15 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         system_load_now = base_util['system_load']
         sub_now = base_util['subscribed']
         comp_load = base_util['component_load']
-        self.assertEqual(self.close(sub_now-(system_load_now-comp_load), extra_reservation+res_per_comp), True)
+        #print "After App1 START subnow(sub) " , sub_now, " sys_load", system_load_now, " sys_load_base ", system_load_base, " comp_load ", comp_load, " subscribed(base) ", subscribed, " extra ", extra_reservation, " res per", res_per_comp, " idle cap mod ", idle_cap_mod 
+        gpp_state =  self.comp._get_usageState()
+        #print "state:", gpp_state
+        if comp_load > extra_reservation :
+            self.assertEqual(self.close(sub_now-comp_load,res_per_comp), True)
+        else:
+            self.assertEqual(self.close(sub_now, extra_reservation+res_per_comp), True)
+
+
         
         app_2.start()
         time.sleep(wait_amount)
@@ -1001,7 +1028,27 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         system_load_now = base_util['system_load']
         sub_now = base_util['subscribed']
         comp_load = base_util['component_load']
-        self.assertEqual(self.close(sub_now-(system_load_now-(comp_load/2)), extra_reservation), True)
+        #print "After App2 START subnow(sub) " , sub_now, " sys_load", system_load_now, " sys_load_base ", system_load_base, " comp_load ", comp_load, " subscribed(base) ", subscribed, " extra ", extra_reservation, " res per", res_per_comp, " idle cap mod ", idle_cap_mod 
+        gpp_state =  self.comp._get_usageState()
+        #print "state:", gpp_state
+        # removed check, no way to correctly gauge load for app2 busy.py...
+
+
+        app_1.stop()
+        time.sleep(wait_amount)
+        app_2.stop()
+        time.sleep(wait_amount)
+        time.sleep(wait_amount)
+        base_util = self.dom.devMgrs[0].devs[0].utilization[0]
+        system_load_now = base_util['system_load']
+        sub_now = base_util['subscribed']
+        comp_load = base_util['component_load']
+        #print "After Stop Both subnow(sub) " , sub_now, " sys_load", system_load_now, " sys_load_base ", system_load_base, " comp_load ", comp_load, " subscribed(base) ", subscribed, " extra ", extra_reservation, " res per", res_per_comp, " idle cap mod ", idle_cap_mod 
+        gpp_state =  self.comp._get_usageState()
+        #print "state:", gpp_state
+        self.assertEquals(self.close(sub_now, extra_reservation+res_per_comp ), True)
+        self.assertEquals(self.float_eq(sub_now_pre, sub_now, eps=.01), True)
+
 
 
     # TODO Add additional tests here
@@ -1014,8 +1061,18 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
 if __name__ == "__main__":
     # figure out numa layout, test numaclt --show ..
     import os
+    all_cpus="0"
     maxnode=0
     maxcpu=1
+    eface="em1"
+
+    lines = [line.rstrip() for line in os.popen('cat /proc/net/dev')]
+    for l in lines[2:]:
+        t1=l.split(':')[0].lstrip()
+        if t1.startswith('lo') == False:
+            eface=t1
+            break   
+
     try:
         # figure out if GPP has numa library dependency
         lines = [ line.rstrip() for line in os.popen('ldd ../cpp/GPP') ]
@@ -1034,9 +1091,6 @@ if __name__ == "__main__":
             if l.startswith('physcpubind'):
                 maxcpu=int(l.split()[-1])
 
-        if maxcpu < 10:
-            raise -1
-
         maxcpus=maxcpu+1
         maxnodes=maxnode+1
         numa_layout=[]
@@ -1045,10 +1099,17 @@ if __name__ == "__main__":
             numa_layout.append(xx[0])
 
         all_cpus='0-'+str(maxcpus)
+        all_cpus_sans0='1-'+str(maxcpus-1)
+        if maxcpus == 2:
+            all_cpus_sans0='1'
+        elif maxcpus == 1 :
+            all_cpus="0"
+            all_cpus_sans0=''
+
         numa_match = { "all":all_cpus,
                        "sock0":  all_cpus,
                        "sock1": all_cpus,
-                       "sock0sans0":  all_cpus,
+                       "sock0sans0":  all_cpus_sans0,
                        "5" : all_cpus,
                        "8-10" : all_cpus }
 
@@ -1065,18 +1126,42 @@ if __name__ == "__main__":
 
         if maxcpus > 11:
             numa_match["8-10"]="8-10"
+
+        if maxcpus == 2:
+            numa_match["5"] = all_cpus_sans0
+            numa_match["8-10"]= all_cpus_sans0
     except:
         import multiprocessing
-        all_cpus='0-'+str(multiprocessing.cpu_count()-1)
-        maxnodes=1
         maxcpus=multiprocessing.cpu_count()
+        all_cpus='0-'+str(maxcpus-1)
+        all_cpus_sans0='0-'+str(maxcpus-1)
+        maxnodes=1
+        if maxcpus == 2:
+            all_cpus_sans0='0-1'
+        elif maxcpus == 1 :
+            all_cpus='0'
+            all_cpus_sans0=''
+
+        numa_layout=[ all_cpus ]
         numa_match={ "all" :  all_cpus,
                      "sock0":  all_cpus,
                      "sock1": all_cpus,
-                     "sock0sans0":  all_cpus,
+                     "sock0sans0":  all_cpus_sans0,
                      "5" : all_cpus,
                      "8-10" : all_cpus }
 
+    if maxnodes < 2 :
+        affinity_test_src["sock1"] = "0"
 
-    #print "numa findings maxnodes:", maxnodes, " maxcpus:", maxcpus, " numa_match:", numa_match, " numa_layout", numa_layout
+    if maxcpus < 9 or maxcpus < 11 :
+        affinity_test_src["8-10"] = all_cpus
+        if maxcpus == 2:
+            affinity_test_src["8-10"] = all_cpus_sans0
+
+    if maxcpus < 9 or maxcpus < 11 :
+        affinity_test_src["5"] = all_cpus
+        if maxcpus == 2:
+            affinity_test_src["5"] = all_cpus_sans0
+
+    #print "numa findings maxnodes:", maxnodes, " maxcpus:", maxcpus, " numa_match:", numa_match, " numa_layout", numa_layout, " map:", affinity_test_src
     ossie.utils.testing.main("../GPP.spd.xml") # By default tests all implementations
