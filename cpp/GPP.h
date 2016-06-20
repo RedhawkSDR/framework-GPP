@@ -78,12 +78,12 @@ class GPP_i : public GPP_base
         void deallocate_loadCapacity(const double &value);
         bool allocate_diskCapacity(const double &value);
         void deallocate_diskCapacity(const double &value);
-        bool allocate_memCapacity(const int64_t &value);
-        void deallocate_memCapacity(const int64_t &value);
-        bool allocate_mcastegress_capacity(const int32_t &value);
-        void deallocate_mcastegress_capacity(const int32_t &value);
-        bool allocate_mcastingress_capacity(const int32_t &value);
-        void deallocate_mcastingress_capacity(const int32_t &value);
+        bool allocate_memCapacity(const CORBA::LongLong &value);
+        void deallocate_memCapacity(const CORBA::LongLong &value);
+        bool allocate_mcastegress_capacity(const CORBA::Long &value);
+        void deallocate_mcastegress_capacity(const CORBA::Long &value);
+        bool allocate_mcastingress_capacity(const CORBA::Long &value);
+        void deallocate_mcastingress_capacity(const CORBA::Long &value);
 
         CF::ExecutableDevice::ProcessID_Type execute ( const char* name, 
                                                        const CF::Properties& options, 
@@ -112,9 +112,33 @@ class GPP_i : public GPP_base
         CORBA::Boolean allocateCapacity (const CF::Properties& capacities) throw (CF::Device::InvalidState, CF::Device::InvalidCapacity, CF::Device::InsufficientCapacity, CORBA::SystemException);
         void releaseObject() throw (CORBA::SystemException, CF::LifeCycle::ReleaseError);
 
+
+        void postConstruction( std::string &softwareProfile,
+                          std::string &registrar_ior,
+                          const std::string &idm_channel_ior="",
+                          const std::string &nic="",
+                          const int  sigfd=-1 );
+
         int sigchld_handler( int sig );
 
         int redirected_io_handler( );
+        
+        std::vector<component_monitor_struct> get_component_monitor();
+        
+        struct proc_values {
+            float mem_rss;
+            CORBA::ULong num_threads;
+            int pgrpid;
+        };
+        
+        struct grp_values : proc_values {
+            int num_processes;
+            std::vector<int> pids;
+        };
+        
+        void update_grp_child_pids();
+        std::map<int,proc_values> parsed_stat;
+        std::map<int,grp_values> grp_children;
 
         struct  proc_redirect {
           int         pid;
@@ -134,9 +158,12 @@ class GPP_i : public GPP_base
           std::string identifier;
           bool        app_started;
           float       reservation;
+          float       core_usage;
           bool        terminated;
           uint64_t    pstat_history[pstat_history_len];
           uint8_t     pstat_idx;
+          std::vector<int> pids;
+          GPP_i       *parent;
 
 	  component_description();
           component_description( const std::string &appId);
@@ -227,6 +254,7 @@ class GPP_i : public GPP_base
           void removeProcess(int pid );
 
           void reservedChanged(const float *oldValue, const float *newValue);
+          void mcastnicThreshold_changed(const CORBA::Long *oldValue, const CORBA::Long *newValue);
           void update();
 
           ProcessList                                         pids;

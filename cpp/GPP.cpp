@@ -33,12 +33,14 @@
 #include <signal.h>
 #include <errno.h>
 #include <libgen.h>
+#include <glob.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/signalfd.h>
 #include <sys/time.h>
 #include <sys/utsname.h>
+#include <sys/sysinfo.h>
 #include <boost/filesystem/path.hpp>
 #include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
@@ -47,6 +49,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/regex.hpp>
+#include <boost/foreach.hpp>
 #ifdef  HAVE_LIBNUMA
 #include <numa.h>
 #endif
@@ -276,11 +279,17 @@ GPP_i::component_description::component_description( const std::string &appId) :
 
 int64_t GPP_i::component_description::get_process_time() 
 {   
-  PidProcStatParser pstat_file(pid);
-  if ( pstat_file.parse() < 0 ) {
-    return -1;
+  int64_t retval = 0;
+  if (parent->grp_children.find(pid) == parent->grp_children.end())
+      return retval;
+  BOOST_FOREACH(const int &_pid, parent->grp_children[pid].pids) {
+    PidProcStatParser pstat_file(_pid);
+    if ( pstat_file.parse() < 0 ) {
+        return -1;
+    }
+    retval += pstat_file.get_ticks();
   }
-  return pstat_file.get_ticks();
+  return retval;
 }
 
 void GPP_i::component_description::add_history( int64_t ptime ) {
@@ -392,6 +401,7 @@ void GPP_i::_init() {
   user_id = s.str();
   limit_check_count = 0;
   n_reservations =0;
+  sig_fd = -1;
 
   //
   // io redirection for child processes
@@ -430,23 +440,8 @@ void GPP_i::_init() {
   catch(...){
   }
 
-  //
-  // Install signal handler for processing SIGCHLD through
-  // signal file descriptor to avoid whitelist/blacklist function calls
-  //
-  int err;
-  sigset_t  sigset;
-  err=sigemptyset(&sigset);
-  err = sigaddset(&sigset, SIGCHLD);
-  err = sigprocmask(SIG_BLOCK, &sigset, NULL);
-  if ( err < 0 ) throw std::runtime_error( "unable configure signal handler");
-  sig_fd = signalfd(-1, &sigset,0);
-  if ( sig_fd < 0 ) throw std::runtime_error("unable configure signal handler");
-
   // default cycle time setting for updating data model, metrics and state
   threshold_cycle_time = 500;
-
-  _signalThread.start();
 
   //
   // Add property change listeners and allocation modifiers
@@ -461,6 +456,9 @@ void GPP_i::_init() {
   // add property change listener
   addPropertyChangeListener("DCE:c80f6c5a-e3ea-4f57-b0aa-46b7efac3176", this, &GPP_i::_component_output_changed);
 
+  // add property change listener
+  addPropertyChangeListener("DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1", this, &GPP_i::mcastnicThreshold_changed);
+
   utilization_entry_struct cpu;
   cpu.description = "CPU cores";
   cpu.component_load = 0;
@@ -468,6 +466,8 @@ void GPP_i::_init() {
   cpu.subscribed = 0;
   cpu.maximum = 0;
   utilization.push_back(cpu);
+  
+  setPropertyQueryImpl(this->component_monitor, this, &GPP_i::get_component_monitor);
 
   // tie allocation modifier callbacks to identifiers
 
@@ -488,6 +488,143 @@ void GPP_i::_init() {
 
   //setAllocationImpl("diskCapacity", this, &GPP_i::allocate_diskCapacity, &GPP_i::deallocate_diskCapacity);
 
+}
+
+
+void GPP_i::postConstruction (std::string &profile, 
+                                     std::string &registrar_ior, 
+                                     const std::string &idm_channel_ior,
+                                     const std::string &nic,
+                                     const int sigfd )
+{
+
+  Device_impl::postConstruction(profile,registrar_ior,idm_channel_ior,nic,sigfd );
+  // if sigfd > 0 then signalfd method was establish via command line USESIGFD
+  if ( sigfd > 0 ) {
+    sig_fd = sigfd;
+  }
+  else {
+    // require signalfd to be configured before orb init call.... 
+    throw std::runtime_error("unable configure signal handler");
+  }
+
+  _signalThread.start();
+
+}
+
+void GPP_i::update_grp_child_pids() {
+    boost::recursive_mutex::scoped_lock lock(load_execute_lock);
+    glob_t globbuf;
+    std::vector<int> pids_now;
+    glob("/proc/[0-9]*", GLOB_NOSORT, NULL, &globbuf);
+    for (unsigned int i = 0; i < globbuf.gl_pathc; i++) {
+        std::string stat_filename(globbuf.gl_pathv[globbuf.gl_pathc - i - 1]);
+        std::string proc_id(stat_filename.substr(stat_filename.rfind("/")+1));
+        pids_now.push_back(boost::lexical_cast<int>(proc_id));
+    }
+    BOOST_FOREACH(const int &_pid, pids_now) {
+        if (parsed_stat.find(_pid) == parsed_stat.end()) { // it is not on the map
+            std::stringstream stat_filename;
+            stat_filename << "/proc/"<<_pid<<"/stat";
+            std::string line;
+            std::vector<std::string> fields;
+            try {
+                std::ifstream istr(stat_filename.str().c_str());
+                std::getline(istr, line);
+                boost::split(fields, line, boost::is_any_of(std::string(" ")));
+                static const size_t expected_size(37);
+                if (fields.size() < expected_size) {
+                    std::stringstream errstr;
+                    errstr << "Insufficient fields in "<<stat_filename<<" file (expected>=" << expected_size << " received=" << fields.size() << ")";
+                    LOG_DEBUG(GPP_i, __FUNCTION__ << ": " << errstr.str() );
+                    continue;
+                }
+            } catch ( ... ) {
+                std::stringstream errstr;
+                errstr << "Unable to read "<<stat_filename<<". The process is no longer there";
+                LOG_DEBUG(GPP_i, __FUNCTION__ << ": " << errstr.str() );
+                continue;
+            }
+            proc_values tmp;
+            tmp.mem_rss = boost::lexical_cast<float>(fields[23]) * getpagesize() / (1024*1024);
+            tmp.num_threads = boost::lexical_cast<CORBA::ULong>(fields[19]);
+            tmp.pgrpid = boost::lexical_cast<float>(fields[4]);
+            int pid = boost::lexical_cast<int>(fields[0]);
+            parsed_stat[pid] = tmp;
+            if (grp_children.find(tmp.pgrpid) == grp_children.end()) {
+                grp_children[tmp.pgrpid].num_processes = 1;
+                grp_children[tmp.pgrpid].mem_rss = tmp.mem_rss;
+                grp_children[tmp.pgrpid].num_threads = tmp.num_threads;
+                grp_children[tmp.pgrpid].pgrpid = tmp.pgrpid;
+                grp_children[tmp.pgrpid].pids.push_back(pid);
+            } else {
+                grp_children[tmp.pgrpid].num_processes += 1;
+                grp_children[tmp.pgrpid].mem_rss += tmp.mem_rss;
+                grp_children[tmp.pgrpid].num_threads += tmp.num_threads;
+                grp_children[tmp.pgrpid].pids.push_back(pid);
+            }
+        }
+    }
+    std::vector<int> parsed_stat_to_erase;
+    for(std::map<int, proc_values>::iterator _it = parsed_stat.begin(); _it != parsed_stat.end(); _it++) {
+        if (std::find(pids_now.begin(), pids_now.end(), _it->first) == pids_now.end()) {  // it is not on the current process list
+            if (grp_children.find(parsed_stat[_it->first].pgrpid) != grp_children.end()) {
+                std::vector<int>::iterator it = std::find(grp_children[parsed_stat[_it->first].pgrpid].pids.begin(), grp_children[parsed_stat[_it->first].pgrpid].pids.end(), _it->first);
+                if (it != grp_children[parsed_stat[_it->first].pgrpid].pids.end())
+                    grp_children[parsed_stat[_it->first].pgrpid].pids.erase(it);
+            }
+            parsed_stat_to_erase.push_back(_it->first);
+        }
+    }
+    BOOST_FOREACH(const int &_pid, parsed_stat_to_erase) {
+        parsed_stat.erase(_pid);
+    }
+}
+
+std::vector<component_monitor_struct> GPP_i::get_component_monitor() {
+    std::vector<component_monitor_struct> retval;
+    struct sysinfo info;
+    sysinfo(&info);
+    BOOST_FOREACH(const component_description &_pid, pids) {
+        if ( !_pid.terminated ) {
+            if ((grp_children.find(_pid.pid) == grp_children.end()) or (parsed_stat.find(_pid.pid) == parsed_stat.end())) {
+                std::stringstream errstr;
+                errstr << "Could not find /proc/"<<_pid.pid<<"/stat. The process corresponding to component "<<_pid.identifier<<" is no longer there";
+                LOG_WARN(GPP_i, __FUNCTION__ << ": " << errstr.str() );
+                continue;
+            }
+            component_monitor_struct tmp;
+            tmp.waveform_id = _pid.appName;
+            tmp.pid = _pid.pid;
+            tmp.component_id = _pid.identifier;
+            tmp.num_processes = grp_children[_pid.pid].num_processes;
+            tmp.cores = _pid.core_usage;
+
+            tmp.mem_rss = grp_children[_pid.pid].mem_rss;
+            tmp.mem_percent = (double) grp_children[_pid.pid].mem_rss * (1024*1024) / ((double)info.totalram * info.mem_unit) * 100;
+            tmp.num_threads = grp_children[_pid.pid].num_threads;
+            
+            tmp.num_files = 0;
+            BOOST_FOREACH(const int &actual_pid, grp_children[_pid.pid].pids) {
+                std::stringstream fd_dirname;
+                DIR * dirp;
+                struct dirent * entry;
+                fd_dirname <<"/proc/"<<actual_pid<<"/fd";
+                dirp = opendir(fd_dirname.str().c_str());
+                if (dirp != NULL) {
+                    while ((entry = readdir(dirp)) != NULL) {
+                        if (entry->d_type != DT_DIR) {  // If the entry is not a directory
+                            tmp.num_files++;
+                        }
+                    }
+                }
+            }
+
+            retval.push_back(tmp);
+        }
+    }
+    
+    return retval;
 }
 
 void GPP_i::process_ODM(const CORBA::Any &data) {
@@ -567,7 +704,7 @@ int GPP_i::_setupExecPartitions( const CpuList &bl_cpus ) {
     if ( execPartitions.size()  ) {
       ExecPartitionList::iterator iter =  execPartitions.begin();
       std::ostringstream ss;
-      ss  << boost::format("%-6s %-4s %-7s %-7s %-7s ") % "SOCKET" % "CPUS" % "USER"  % "SYSTEM"  % "IDLE"   << std::endl;
+      ss  << boost::format("%-6s %-4s %-7s %-7s %-7s ") % "SOCKET" % "CPUS" % "USER"  % "SYSTEM"  % "IDLE"  ;
       LOG_INFO(GPP_i, ss.str()  );
       ss.clear();
       ss.str("");
@@ -781,10 +918,10 @@ void GPP_i::initialize() throw (CF::LifeCycle::InitializeError, CORBA::SystemExc
   //
   // setup mcast interface allocations, used by older systems -- need to deprecate
   //
-  mcastnicIngressThresholdValue = mcastnicIngressTotal * ( advanced.maximum_throughput_percentage / 100.0) ;
+  mcastnicIngressThresholdValue = mcastnicIngressTotal * ( mcastnicThreshold / 100.0) ;
   mcastnicIngressCapacity = mcastnicIngressThresholdValue;
   mcastnicIngressFree = mcastnicIngressCapacity;
-  mcastnicEgressThresholdValue = mcastnicEgressTotal * ( advanced.maximum_throughput_percentage / 100.0) ;
+  mcastnicEgressThresholdValue = mcastnicEgressTotal * ( mcastnicThreshold / 100.0) ;
   mcastnicEgressCapacity = mcastnicEgressThresholdValue;
   mcastnicEgressFree = mcastnicEgressCapacity;
   
@@ -1306,11 +1443,11 @@ void GPP_i::updateUsageState()
     LOG_DEBUG(GPP_i, "Usage State Busy (reservation load exceed)  LIMITS....  ");
     setUsageState(CF::Device::BUSY);
   }
-  else if ( mcastnicIngressCapacity >  mcastnicIngressThresholdValue ) {
+  else if ( ((mcastnicInterface != "" ) or (mcastnicIngressThresholdValue > 0)) && (mcastnicIngressCapacity >  mcastnicIngressThresholdValue) ) {
     LOG_DEBUG(GPP_i, "Usage State Busy (multicast nic)  LIMITS....  ");
     setUsageState(CF::Device::BUSY);
   }
-  else if ( mcastnicEgressCapacity >  mcastnicEgressThresholdValue ) {
+  else if ( ((mcastnicInterface != "" ) or (mcastnicEgressThresholdValue  > 0)) && (mcastnicEgressCapacity >  mcastnicEgressThresholdValue) ) {
     LOG_DEBUG(GPP_i, "Usage State Busy (multicast nic)  LIMITS....  ");
     setUsageState(CF::Device::BUSY);
   }
@@ -1535,6 +1672,43 @@ void GPP_i::reservedChanged(const float *oldValue, const float *newValue)
 }
 
 
+void  GPP_i::mcastnicThreshold_changed(const CORBA::Long *oldvalue, const CORBA::Long *newvalue) {
+
+  if(  newvalue ) {
+    int threshold = *newvalue;
+    if ( threshold >= 0 && threshold <= 100 ) {
+      double origIngressThreshold = mcastnicIngressThresholdValue;
+      double origEgressThreshold = mcastnicIngressThresholdValue;
+      mcastnicThreshold = threshold;
+      mcastnicIngressThresholdValue = mcastnicIngressTotal * ( mcastnicThreshold / 100.0) ;
+      mcastnicEgressThresholdValue = mcastnicEgressTotal * ( mcastnicThreshold / 100.0) ;
+
+      if (  mcastnicIngressThresholdValue > origIngressThreshold  ) {
+        // add extra to capacity
+        mcastnicIngressCapacity += mcastnicIngressThresholdValue -origIngressThreshold;
+        mcastnicIngressFree = mcastnicIngressCapacity;
+      }
+      else if ( mcastnicIngressThresholdValue < mcastnicIngressCapacity ){
+        mcastnicIngressCapacity = mcastnicIngressThresholdValue;
+        mcastnicIngressFree = mcastnicIngressCapacity;
+      }
+
+      if ( mcastnicEgressThresholdValue > origEgressThreshold ) {
+        // add extra to capacity
+        mcastnicEgressCapacity += mcastnicEgressThresholdValue-origEgressThreshold;
+        mcastnicEgressFree = mcastnicEgressCapacity;
+      }
+      else if ( mcastnicEgressThresholdValue < mcastnicEgressCapacity ){
+        mcastnicEgressCapacity = mcastnicEgressThresholdValue;
+        mcastnicEgressFree = mcastnicEgressCapacity;
+      }
+
+    }
+  }
+
+}
+
+
 void GPP_i::_affinity_changed( const affinity_struct *ovp, const affinity_struct *nvp ) {
 
   if ( ovp && nvp && *ovp == *nvp ) return;
@@ -1607,15 +1781,15 @@ void GPP_i::_affinity_changed( const affinity_struct *ovp, const affinity_struct
     if ( std::count( bl_cpus.begin(), bl_cpus.end(), cpus[i] ) == 0 ) wl_cpus.push_back( cpus[i] );
   }
 
-  RH_NL_DEBUG("GPP", "Affinity Force Override, force_override=" << nv.force_override);
-  RH_NL_INFO("GPP", "Affinity Disable State,  disabled=" << nv.disabled);
-  if ( nv.disabled ) {
-    RH_NL_INFO("GPP", "Disabling affinity processing requests.");
-    redhawk::affinity::set_affinity_state( nv.disabled );
-  }
-
   // apply changes to member variable
   affinity = nv;
+  RH_NL_DEBUG("GPP", "Affinity Force Override, force_override=" << nv.force_override);
+  RH_NL_INFO("GPP", "Affinity Disable State,  disabled=" << nv.disabled);
+  if ( nv.disabled || gpp::affinity::check_numa() == false ) {
+    RH_NL_INFO("GPP", "Disabling affinity processing requests.");
+    affinity.disabled=true;
+    redhawk::affinity::set_affinity_state(affinity.disabled);
+  }
 
   _set_processor_monitor_list( wl_cpus );
 
@@ -1639,7 +1813,7 @@ void GPP_i::_affinity_changed( const affinity_struct *ovp, const affinity_struct
 //  Allocation Callback Methods
 //
 //
-bool GPP_i::allocate_mcastegress_capacity(const int32_t &value)
+bool GPP_i::allocate_mcastegress_capacity(const CORBA::Long &value)
 {
     boost::mutex::scoped_lock lock(propertySetAccess);
     std::string  except_msg("Invalid allocation");
@@ -1647,14 +1821,23 @@ bool GPP_i::allocate_mcastegress_capacity(const int32_t &value)
     LOG_DEBUG(GPP_i, __FUNCTION__ << ": Allocating mcastegress allocation " << value);
 
     if ( mcastnicInterface == "" )  {
-      LOG_DEBUG(GPP_i, __FUNCTION__ <<  "mcastnicEgressCapacity request failed because no mcastnicInterface has been configured" );
+      std::string msg = "mcastnicEgressCapacity request failed because no mcastnicInterface has been configured";
+      LOG_DEBUG(GPP_i, __FUNCTION__ <<  msg );
+      throw CF::Device::InvalidState(msg.c_str());
       return retval;
     }
 
     // see if calculated capacity and measured capacity is avaliable
     if ( value > mcastnicEgressCapacity ) {
-      LOG_DEBUG(GPP_i, __FUNCTION__ <<  "mcastnicEgressCapacity request failed because of insufficent capacity, only %s available" <<  mcastnicEgressCapacity );
-      return retval;
+      std::ostringstream os;
+      os << "mcastnicEgressCapacity request: " <<  value << " failed because of insufficent capacity available, current: " <<  mcastnicEgressCapacity;
+      std::string msg = os.str();
+      LOG_DEBUG(GPP_i, __FUNCTION__ <<  msg );
+      CF::Properties errprops;
+      errprops.length(1);
+      errprops[0].id = "mcastnicEgressCapacity";
+      errprops[0].value <<= (CORBA::Long)value;
+      throw CF::Device::InvalidCapacity(msg.c_str(), errprops);
     }
     
     // adjust property 
@@ -1665,7 +1848,7 @@ bool GPP_i::allocate_mcastegress_capacity(const int32_t &value)
 }
 
 
-void GPP_i::deallocate_mcastegress_capacity(const int32_t &value)
+void GPP_i::deallocate_mcastegress_capacity(const CORBA::Long &value)
 {
     boost::mutex::scoped_lock lock(propertySetAccess);
     LOG_DEBUG(GPP_i, __FUNCTION__ << ": Deallocating mcastegress allocation " << value);
@@ -1680,7 +1863,7 @@ void GPP_i::deallocate_mcastegress_capacity(const int32_t &value)
 
 
 
-bool GPP_i::allocate_mcastingress_capacity(const int32_t &value)
+bool GPP_i::allocate_mcastingress_capacity(const CORBA::Long &value)
 {
     boost::mutex::scoped_lock lock(propertySetAccess);
     std::string  except_msg("Invalid allocation");
@@ -1688,14 +1871,22 @@ bool GPP_i::allocate_mcastingress_capacity(const int32_t &value)
     LOG_DEBUG(GPP_i, __FUNCTION__ << ": Allocating mcastingress allocation " << value);
 
     if ( mcastnicInterface == "" )  {
-      LOG_DEBUG(GPP_i, __FUNCTION__ <<  "mcastnicIngressCapacity request failed because no mcastnicInterface has been configured" );
-      return retval;
+      std::string msg = "mcastnicIngressCapacity request failed because no mcastnicInterface has been configured" ;
+      LOG_DEBUG(GPP_i, __FUNCTION__ <<  msg );
+      throw CF::Device::InvalidState(msg.c_str());
     }
 
     // see if calculated capacity and measured capacity is avaliable
     if ( value > mcastnicIngressCapacity ) {
-      LOG_DEBUG(GPP_i, __FUNCTION__ <<  "mcastnicIngressCapacity request failed because of insufficent capacity, only %s available" <<  mcastnicIngressCapacity );
-      return retval;
+      std::ostringstream os;
+      os << "mcastnicIngressCapacity request: " << value << " failed because of insufficent capacity available, current: " <<  mcastnicIngressCapacity;
+      std::string msg = os.str();
+      LOG_DEBUG(GPP_i, __FUNCTION__ <<  msg );
+      CF::Properties errprops;
+      errprops.length(1);
+      errprops[0].id = "mcastnicIngressCapacity";
+      errprops[0].value <<= (CORBA::Long)value;
+      throw CF::Device::InvalidCapacity(msg.c_str(), errprops);
     }
     
     // adjust property 
@@ -1707,7 +1898,7 @@ bool GPP_i::allocate_mcastingress_capacity(const int32_t &value)
 }
 
 
-void GPP_i::deallocate_mcastingress_capacity(const int32_t &value)
+void GPP_i::deallocate_mcastingress_capacity(const CORBA::Long &value)
 {
     boost::mutex::scoped_lock lock(propertySetAccess);
     LOG_DEBUG(GPP_i, __FUNCTION__ << ": Deallocating mcastingress deallocation " << value);
@@ -1818,7 +2009,7 @@ void GPP_i::deallocate_diskCapacity(const double &value) {
   return;
 }
 
-bool GPP_i::allocate_memCapacity(const int64_t &value) {
+bool GPP_i::allocate_memCapacity(const CORBA::LongLong &value) {
 
   if (isBusy()) {
     return false;
@@ -1832,7 +2023,7 @@ bool GPP_i::allocate_memCapacity(const int64_t &value) {
   return true;
 }
 
-void GPP_i::deallocate_memCapacity(const int64_t &value) {
+void GPP_i::deallocate_memCapacity(const CORBA::LongLong &value) {
   LOG_DEBUG(GPP_i, "deallocate memory (REQUEST) value: " << value << " memCapacity: " << memCapacity << " memFree:" << memFree  );
   memCapacity += value;
   LOG_DEBUG(GPP_i, "deallocate memory (SUCCESS) value: " << value << " memCapacity: " << memCapacity << " memFree:" << memFree  );
@@ -1939,6 +2130,9 @@ void GPP_i::update()
 
   {
     ReadLock rlock(pidLock);
+    
+    this->update_grp_child_pids();
+    
     ProcessList::iterator i=this->pids.begin();
     for ( ; i!=pids.end(); i++) {
       
@@ -1994,6 +2188,7 @@ void GPP_i::update()
       usage = i->get_pstat_usage();
 
       percent_core = (double)usage * inverse_load_per_core;
+      i->core_usage = percent_core;
       double res =  i->reservation;
 
 #if 0
@@ -2295,6 +2490,8 @@ void GPP_i::addProcess(int pid, const std::string &appName, const std::string &i
   tmp.pid  = pid;
   tmp.identifier = identifier;
   tmp.reservation = req_reservation;
+  tmp.core_usage = 0;
+  tmp.parent = this;
   pids.push_front( tmp );
   LOG_DEBUG(GPP_i, "END Adding Process/RES: "  <<  pid << "/" << req_reservation << "  APP:" << appName );
 }

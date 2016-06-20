@@ -72,6 +72,7 @@ class GPP_base : public ExecutableDevice_impl, protected ThreadedComponent
         std::vector<nic_allocation_status_struct_struct> nic_allocation_status;
         std::vector<nic_metrics_struct_struct> nic_metrics;
         std::vector<interfaces_struct> networkMonitor;
+        std::vector<component_monitor_struct> component_monitor;
 
         // reporting struct when a threshold is broke
         threshold_event_struct threshold_event;

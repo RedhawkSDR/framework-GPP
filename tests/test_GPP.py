@@ -45,10 +45,13 @@ import os
 
 maxcpus=32
 maxnodes=2
+all_cpus='0-'+str(maxcpus-1)
+all_cpus_sans0='1-'+str(maxcpus-1)
 numa_match={ "all" : "0-31",
              "sock0": "0-7,16-23",
              "sock1": "8-15,24-31", 
              "sock0sans0": "1-7,16-23", 
+             "sock1sans0": "1-7,16-23", 
              "5" : "5",
              "8-10" : "8-10" }
 numa_layout=[ "0-7,16-23", "8-15,24-31" ]
@@ -164,7 +167,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         except:
             cpus_allowed=[]
 
-        print pname, cpus_allowed
+        #print pname, cpus_allowed
         self.assertEqual(cpus_allowed[1],affinity_match)
         return
 
@@ -289,6 +292,17 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
                                                                CF.DataType(id="NAMING_CONTEXT_IOR", value=any.to_any(appreg_ior))])
         self.assertNotEqual(pid, 0)
         
+        wait_amount = (self.comp.threshold_cycle_time / 1000.0) * 4
+        time.sleep(wait_amount)
+        
+        component_monitor = self.comp.component_monitor
+        self.assertNotEqual(len(component_monitor), 0)
+        self.assertEquals(component_monitor[0].pid, pid)
+        self.assertEquals(component_monitor[0].component_id, comp_id)
+        self.assertEquals(component_monitor[0].waveform_id, comp_id)
+        self.assertEquals(component_monitor[0].num_processes, 1)
+        self.assertEquals(component_monitor[0].num_threads, 5)
+        
         try:
             os.kill(pid, 0)
         except OSError:
@@ -361,7 +375,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
             pass
         else:
             self.fail("Process failed to terminate")
-        
+
     def No_testScreenExecute(self):
         self.runGPP({"DCE:218e612c-71a7-4a73-92b6-bf70959aec45": True})
 
@@ -513,6 +527,63 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assert_(81 == any.from_any(event.properties[0].value))
 
 
+    def test_mcastNicThreshold(self):
+
+        # set mcast exec param values for the test
+        eparms = { "DCE:4e416acc-3144-47eb-9e38-97f1d24f7700": 'eth0',
+                   'DCE:5a41c2d3-5b68-4530-b0c4-ae98c26c77ec': 100,
+                   'DCE:442d5014-2284-4f46-86ae-ce17e0749da0': 100 }
+        self.runGPP(eparms)
+
+        # fire off change listener for setting threshold
+        cprops = [CF.DataType(id='DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1',value=any.to_any(1))]
+        self.comp_obj.configure(cprops)
+
+        # check that values were changed
+        cprops = [CF.DataType(id='DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1',value=any.to_any(None)),
+                  CF.DataType(id='DCE:506102d6-04a9-4532-9420-a323d818ddec',value=any.to_any(None)) ]
+        cprops = self.comp_obj.query(cprops)
+        self.assertEquals( cprops[0].value.value(), 1)
+        self.assertEquals( cprops[1].value.value(), 1)
+
+        # try failed allocation
+        allocProps = [CF.DataType(id='DCE:506102d6-04a9-4532-9420-a323d818ddec',value=any.to_any(200))]
+        self.assertRaises( CF.Device.InvalidCapacity, self.comp_obj.allocateCapacity, allocProps)
+
+        # fire off change listener for setting threshold
+        cprops = [CF.DataType(id='DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1',value=any.to_any(90))]
+        self.comp_obj.configure(cprops)
+
+        # check that values were changed
+        cprops = [CF.DataType(id='DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1',value=any.to_any(None)),
+                  CF.DataType(id='DCE:506102d6-04a9-4532-9420-a323d818ddec',value=any.to_any(None)) ]
+        cprops = self.comp_obj.query(cprops)
+        self.assertEquals( cprops[0].value.value(), 90)
+        self.assertEquals( cprops[1].value.value(), 90)
+
+        # try good allocation
+        allocProps = [CF.DataType(id='DCE:506102d6-04a9-4532-9420-a323d818ddec',value=any.to_any(50))]
+        self.comp_obj.allocateCapacity( allocProps)
+
+        cprops = [CF.DataType(id='DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1',value=any.to_any(None)),
+                  CF.DataType(id='DCE:506102d6-04a9-4532-9420-a323d818ddec',value=any.to_any(None)) ]
+        cprops = self.comp_obj.query(cprops)
+        self.assertEquals( cprops[0].value.value(), 90)
+        self.assertEquals( cprops[1].value.value(), 40)
+
+        self.comp_obj.deallocateCapacity( allocProps)
+
+        cprops = [CF.DataType(id='DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1',value=any.to_any(None)),
+                  CF.DataType(id='DCE:506102d6-04a9-4532-9420-a323d818ddec',value=any.to_any(None)) ]
+        cprops = self.comp_obj.query(cprops)
+        self.assertEquals( cprops[0].value.value(), 90)
+        self.assertEquals( cprops[1].value.value(), 90)
+
+
+
+
+
+
     def DeployWithAffinityOptions(self, options_list, numa_layout_test, bl_cpus ):
         self.runGPP()
 
@@ -578,7 +649,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
     def testSocketAffinity(self):
         self.DeployWithAffinityOptions( [ CF.DataType(id='affinity::exec_directive_class',value=any.to_any('socket')),
                                CF.DataType(id='affinity::exec_directive_value',value=any.to_any(affinity_test_src['sock1'])) ], 
-                                        "sock1", '0' )
+                                        "sock1sans0", '0' )
 
     def testDeployOnSocket(self):
         self.runGPP()
@@ -955,6 +1026,29 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
     def float_eq(self, a,b,eps=0.0000001):
         return abs(a-b) < eps
 
+
+    def testMonitorComponents(self):
+        self._domainBooter, domMgr = self.launchDomainManager(domain_name='REDHAWK_TEST_'+str(os.getpid()))
+        self._deviceBooter, devMgr = self.launchDeviceManager("sdr/dev/nodes/DevMgr_sample/DeviceManager.dcd.xml", domainManager=self.dom.ref)
+        app_1=self.dom.createApplication('/waveforms/load_comp_w/load_comp_w.sad.xml','load_comp_w',[])
+        wait_amount = (self.dom.devMgrs[0].devs[0].threshold_cycle_time / 1000.0) * 4
+        time.sleep(wait_amount)
+        component_monitor = self.dom.devMgrs[0].devs[0].component_monitor[0]
+        self.assertNotEqual(len(component_monitor), 0)
+        self.assertEquals(component_monitor.num_processes, 2)
+        self.assertTrue(component_monitor.cores > 0.75)
+        self.assertTrue(component_monitor.cores < 1.75)
+        app_1.start()
+        time.sleep(wait_amount)
+        component_monitor = self.dom.devMgrs[0].devs[0].component_monitor[0]
+        self.assertEquals(component_monitor.num_processes, 2)
+        self.assertTrue(component_monitor.cores > 1.75)
+        app_1.stop()
+        time.sleep(wait_amount)
+        component_monitor = self.dom.devMgrs[0].devs[0].component_monitor[0]
+        self.assertEquals(component_monitor.num_processes, 2)
+        self.assertTrue(component_monitor.cores > 0.75)
+        self.assertTrue(component_monitor.cores < 1.75)
     
     def testSystemReservation(self):
         copyfile(self.orig_sdrroot+'/dom/mgr/DomainManager', 'sdr/dom/mgr/DomainManager')
@@ -1057,111 +1151,159 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
     #   ossie.utils.testing.bulkio_helpers,
     #   ossie.utils.testing.bluefile_helpers
     # for modules that will assist with testing components with BULKIO ports
-    
-if __name__ == "__main__":
-    # figure out numa layout, test numaclt --show ..
-    import os
-    all_cpus="0"
+
+def get_nonnuma_affinity_ctx( affinity_ctx ):
+    # test should run but affinity will be ignored
+    import multiprocessing
+    maxcpus=multiprocessing.cpu_count()
+    maxnodes=1
+    all_cpus='0-'+str(maxcpus-1)
+    all_cpus_sans0='0-'+str(maxcpus-1)
+    if maxcpus == 2:
+        all_cpus_sans0='0-1'
+    elif maxcpus == 1 :
+        all_cpus='0'
+        all_cpus_sans0=''
+
+    numa_layout=[ all_cpus ]
+    affinity_match={ "all" :  all_cpus,
+             "sock0":  all_cpus,
+             "sock1": all_cpus,
+             "sock0sans0":  all_cpus_sans0,
+             "sock1sans0":  all_cpus_sans0,
+             "5" : all_cpus,
+             "8-10" : all_cpus }
+
+    affinity_ctx['maxcpus']=maxcpus
+    affinity_ctx['maxnodes']=maxnodes
+    affinity_ctx['all_cpus']=all_cpus
+    affinity_ctx['all_cpus_sans0']=all_cpus_sans0
+    affinity_ctx['numa_layout']=numa_layout
+    affinity_ctx['affinity_match']=affinity_match
+
+def get_numa_affinity_ctx( affinity_ctx ):
+    # test numaclt --show .. look for cpu bind of 0,1 and cpu id atleast 31
     maxnode=0
-    maxcpu=1
-    eface="em1"
+    maxcpu=0
+    lines = [line.rstrip() for line in os.popen('numactl --show')]
+    for l in lines:
+        if l.startswith('nodebind'):
+            maxnode=int(l.split()[-1])
+        if l.startswith('physcpubind'):
+            maxcpu=int(l.split()[-1])
 
-    lines = [line.rstrip() for line in os.popen('cat /proc/net/dev')]
-    for l in lines[2:]:
-        t1=l.split(':')[0].lstrip()
-        if t1.startswith('lo') == False:
-            eface=t1
-            break   
-
+    maxcpus=maxcpu+1
+    maxnodes=maxnode+1
+    numa_layout=[]
     try:
-        # figure out if GPP has numa library dependency
-        lines = [ line.rstrip() for line in os.popen('ldd ../cpp/GPP') ]
-        t=None
-        for l in lines:
-            if "libnuma" in l:
-              t="yes"
+      for i in range(maxnodes):
+          xx = [line.rstrip() for line in open('/sys/devices/system/node/node'+str(i)+'/cpulist')]
+          numa_layout.append(xx[0])
+    except:
+        pass
 
-        if t == None:
-            raise 1
+    all_cpus='0-'+str(maxcpus-1)
+    all_cpus_sans0='1-'+str(maxcpus-1)
+    if maxcpus == 2:
+        all_cpus_sans0='1'
+    elif maxcpus == 1 :
+        all_cpus="0"
+        all_cpus_sans0=''
 
-        lines = [line.rstrip() for line in os.popen('numactl --show')]
-        for l in lines:
-            if l.startswith('nodebind'):
-                maxnode=int(l.split()[-1])
-            if l.startswith('physcpubind'):
-                maxcpu=int(l.split()[-1])
-
-        maxcpus=maxcpu+1
-        maxnodes=maxnode+1
-        numa_layout=[]
-        for i in range(maxnodes):
-            xx = [line.rstrip() for line in open('/sys/devices/system/node/node'+str(i)+'/cpulist')]
-            numa_layout.append(xx[0])
-
-        all_cpus='0-'+str(maxcpus)
-        all_cpus_sans0='1-'+str(maxcpus-1)
-        if maxcpus == 2:
-            all_cpus_sans0='1'
-        elif maxcpus == 1 :
-            all_cpus="0"
-            all_cpus_sans0=''
-
-        numa_match = { "all":all_cpus,
+    affinity_match = { "all":all_cpus,
                        "sock0":  all_cpus,
                        "sock1": all_cpus,
                        "sock0sans0":  all_cpus_sans0,
+                       "sock1sans0":  all_cpus_sans0,
                        "5" : all_cpus,
                        "8-10" : all_cpus }
 
-        if len(numa_layout) > 0:
-            numa_match["sock0"]=numa_layout[0]
-            aa=numa_layout[0]
-            numa_match["sock0sans0"] = str(int(aa[0])+1)+aa[1:]
+    if len(numa_layout) > 0:
+        affinity_match["sock0"]=numa_layout[0]
+        aa=numa_layout[0]
+        if maxcpus > 2:
+            affinity_match["sock0sans0"] = str(int(aa[0])+1)+aa[1:]
 
-        if len(numa_layout) > 1:
-            numa_match["sock1"]=numa_layout[1]
+    if len(numa_layout) > 1:
+        affinity_match["sock1"]=numa_layout[1]
+        affinity_match["sock1sans0"]=numa_layout[1]
 
-        if maxcpus > 5:
-            numa_match["5"]="5"
+    if maxcpus > 5:
+        affinity_match["5"]="5"
 
-        if maxcpus > 11:
-            numa_match["8-10"]="8-10"
+    if maxcpus > 11:
+        affinity_match["8-10"]="8-10"
 
-        if maxcpus == 2:
-            numa_match["5"] = all_cpus_sans0
-            numa_match["8-10"]= all_cpus_sans0
-    except:
-        import multiprocessing
-        maxcpus=multiprocessing.cpu_count()
-        all_cpus='0-'+str(maxcpus-1)
-        all_cpus_sans0='0-'+str(maxcpus-1)
-        maxnodes=1
-        if maxcpus == 2:
-            all_cpus_sans0='0-1'
-        elif maxcpus == 1 :
-            all_cpus='0'
-            all_cpus_sans0=''
+    if maxcpus == 2:
+        affinity_match["5"] = all_cpus_sans0
+        affinity_match["8-10"]= all_cpus_sans0
 
-        numa_layout=[ all_cpus ]
-        numa_match={ "all" :  all_cpus,
-                     "sock0":  all_cpus,
-                     "sock1": all_cpus,
-                     "sock0sans0":  all_cpus_sans0,
-                     "5" : all_cpus,
-                     "8-10" : all_cpus }
+    affinity_ctx['maxcpus']=maxcpus
+    affinity_ctx['maxnodes']=maxnodes
+    affinity_ctx['all_cpus']=all_cpus
+    affinity_ctx['all_cpus_sans0']=all_cpus_sans0
+    affinity_ctx['numa_layout']=numa_layout
+    affinity_ctx['affinity_match']=affinity_match
+
+    
+if __name__ == "__main__":
+    # figure out numa layout, test numaclt --show ..
+    all_cpus="0"
+    maxnode=1
+    maxcpu=1
+    eface="em1"
+    #
+    # Figure out ethernet interface to use
+    #
+    lines = [line.rstrip() for line in os.popen('cat /proc/net/dev')]
+    import re
+    for l in lines[2:]:
+        t1=l.split(':')[0].lstrip()
+        if re.match('e.*', t1 ) :
+            eface=t1
+            break
+
+    affinity_test_src['eface']=eface
+
+    nonnuma_affinity_ctx={}
+    get_nonnuma_affinity_ctx(nonnuma_affinity_ctx)
+    numa_affinity_ctx={}
+    get_numa_affinity_ctx(numa_affinity_ctx)
+
+    # figure out if GPP has numa library dependency
+    lines = [ line.rstrip() for line in os.popen('ldd ../cpp/GPP') ]
+    numa=False
+    for l in lines:
+        if "libnuma" in l:
+            numa=True
+
+    if numa:
+        print "NumaSupport ", numa_affinity_ctx
+        maxcpus = numa_affinity_ctx['maxcpus']
+        maxnodes = numa_affinity_ctx['maxnodes']
+        all_cpus = numa_affinity_ctx['all_cpus']
+        all_cpus_sans0 = numa_affinity_ctx['all_cpus_sans0']
+        numa_layout=numa_affinity_ctx['numa_layout']
+        numa_match=numa_affinity_ctx['affinity_match']
+    else:
+        print "NonNumaSupport ", nonnuma_affinity_ctx
+        maxcpus = nonnuma_affinity_ctx['maxcpus']
+        maxnodes = nonnuma_affinity_ctx['maxnodes']
+        all_cpus = nonnuma_affinity_ctx['all_cpus']
+        all_cpus_sans0 = nonnuma_affinity_ctx['all_cpus_sans0']
+        numa_layout=nonnuma_affinity_ctx['numa_layout']
+        numa_match=nonnuma_affinity_ctx['affinity_match']
 
     if maxnodes < 2 :
         affinity_test_src["sock1"] = "0"
 
-    if maxcpus < 9 or maxcpus < 11 :
-        affinity_test_src["8-10"] = all_cpus
-        if maxcpus == 2:
-            affinity_test_src["8-10"] = all_cpus_sans0
+    if maxcpus == 2:
+        affinity_test_src["8-10"] = all_cpus_sans0
+        affinity_test_src["5"] = all_cpus_sans0
+    else:
+        if maxcpus < 9 or maxcpus < 11 :
+            affinity_test_src["8-10"] = all_cpus
+            affinity_test_src["5"] = all_cpus
 
-    if maxcpus < 9 or maxcpus < 11 :
-        affinity_test_src["5"] = all_cpus
-        if maxcpus == 2:
-            affinity_test_src["5"] = all_cpus_sans0
-
-    #print "numa findings maxnodes:", maxnodes, " maxcpus:", maxcpus, " numa_match:", numa_match, " numa_layout", numa_layout, " map:", affinity_test_src
+    print "numa findings maxnodes:", maxnodes, " maxcpus:", maxcpus, " numa_match:", numa_match, " numa_layout", numa_layout, " map:", affinity_test_src
     ossie.utils.testing.main("../GPP.spd.xml") # By default tests all implementations

@@ -5,6 +5,7 @@
 #include <string>
 #include <sched.h>
 #include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 #ifdef HAVE_LIBNUMA
 #include <numa.h>
 #endif
@@ -22,6 +23,15 @@ namespace  gpp {
 
   namespace affinity {
 
+    bool check_numa() { 
+#ifdef HAVE_LIBNUMA
+      return (numa_available() != -1); 
+#else
+      return false;
+#endif
+    }
+
+
     const std::string get_cgroup_root() {
       return redhawk::affinity::get_cgroup_root();
     }
@@ -31,7 +41,7 @@ namespace  gpp {
     }
 
     bool is_disabled() {
-      return redhawk::affinity::is_disabled();
+      return redhawk::affinity::is_disabled() || ( check_numa() == false ) ;
     }
 
     rh_logger::LoggerPtr get_affinity_logger() {
@@ -76,13 +86,18 @@ namespace  gpp {
             iss>>tok;
             // skip interrupt number and iface
             if ( parts > 0 and tok != iface ) {
-              std::istringstream iss(tok);
-              int icnt;
-              iss >> icnt;
-              if ( icnt > 0 ) {
-                RH_NL_TRACE("gpp::affinity", "identify cpus: Adding CPU : " << parts-1);
-                cpus.push_back(parts-1);
-              }
+	      int icnt=0;
+	      try {
+		icnt=boost::lexical_cast<int>(tok);
+		RH_NL_TRACE("gpp::affinity", "identify cpus: CPU : " << parts-1 << " nic interrupts:" << icnt);
+		if ( icnt > 0 ) {
+		  RH_NL_TRACE("gpp::affinity", "identify cpus: Adding CPU : " << parts-1);
+		  cpus.push_back(parts-1);
+		}
+	      }
+	      catch(...){
+		RH_NL_TRACE("gpp::affinity", "Invalid Token: tok:" << tok);
+	      }
             }
             parts++;
           }while(iss);
@@ -106,24 +121,30 @@ namespace  gpp {
       // Determine cpu list by interrupts assigned for the specified NIC
       redhawk::affinity::CpuList cpulist = identify_cpus(iface);
       if ( cpulist.size() > 0 ) {
-        int psoc=-1;
+        if ( check_numa() ) {
+          int psoc=-1;
 #ifdef HAVE_LIBNUMA
-        int soc=-1;
-        for( int i=0; i < (int)cpulist.size();i++ ) {
-          RH_NL_DEBUG("gpp::affinity", "Finding (processor socket) for NIC:" << iface << " socket :" << numa_node_of_cpu(cpulist[i]) );
-          if ( std::count(  bl.begin(), bl.end(), cpulist[i] ) != 0 ) continue;
-          soc = numa_node_of_cpu(cpulist[i]);
-          if ( soc != psoc && psoc != -1 && !findFirst ) {
-            RH_NL_WARN("gpp::affinity", "More than 1 socket servicing NIC:" << iface);
-            psoc=-1;
-            break;
+          int soc=-1;
+          for( int i=0; i < (int)cpulist.size();i++ ) {
+            RH_NL_DEBUG("gpp::affinity", "Finding (processor socket) for NIC:" << iface << " socket :" << numa_node_of_cpu(cpulist[i]) );
+            if ( std::count(  bl.begin(), bl.end(), cpulist[i] ) != 0 ) continue;
+            soc = numa_node_of_cpu(cpulist[i]);
+            if ( soc != psoc && psoc != -1 && !findFirst ) {
+              RH_NL_WARN("gpp::affinity", "More than 1 socket servicing NIC:" << iface);
+              psoc=-1;
+              break;
+            }
+            psoc=soc;
+            if( findFirst ) break;
           }
-          psoc=soc;
-          if( findFirst ) break;
-        }
 #endif
-        retval=psoc;
+          retval=psoc;
+        }
+        else {
+          retval=0;
+        }
       }
+
       
 
       return retval;

@@ -245,11 +245,11 @@ void GPP_base::loadProperties()
                 "configure,event");
 
     addProperty(mcastnicThreshold,
-                0,
+                80,
                 "DCE:89be90ae-6a83-4399-a87d-5f4ae30ef7b1",
-                "mcastnicEgressFree",
-                "readonly",
-                "Mb/s",
+                "mcastnicThreshold",
+                "readwrite",
+                "%",
                 "external",
                 "configure,event");
 
@@ -321,6 +321,14 @@ void GPP_base::loadProperties()
                 "",
                 "external",
                 "configure");
+
+    addProperty(component_monitor,
+                "component_monitor",
+                "",
+                "readonly",
+                "",
+                "external",
+                "property");
 
     addProperty(affinity,
                 affinity_struct(),

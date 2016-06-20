@@ -1232,5 +1232,107 @@ inline bool operator!= (const loadAverage_struct& s1, const loadAverage_struct& 
     return !(s1==s2);
 }
 
+struct component_monitor_struct {
+    component_monitor_struct ()
+    {
+    };
+
+    static std::string getId() {
+        return std::string("component_monitor::component_monitor");
+    };
+
+    std::string component_id;
+    std::string waveform_id;
+    unsigned short pid;
+    float cores;
+    float mem_rss;
+    float mem_percent;
+    CORBA::ULong num_processes;
+    CORBA::ULong num_threads;
+    CORBA::ULong num_files;
+};
+
+inline bool operator>>= (const CORBA::Any& a, component_monitor_struct& s) {
+    CF::Properties* temp;
+    if (!(a >>= temp)) return false;
+    const redhawk::PropertyMap& props = redhawk::PropertyMap::cast(*temp);
+    if (props.contains("component_monitor::component_monitor::component_id")) {
+        if (!(props["component_monitor::component_monitor::component_id"] >>= s.component_id)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::waveform_id")) {
+        if (!(props["component_monitor::component_monitor::waveform_id"] >>= s.waveform_id)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::pid")) {
+        if (!(props["component_monitor::component_monitor::pid"] >>= s.pid)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::cores")) {
+        if (!(props["component_monitor::component_monitor::cores"] >>= s.cores)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::mem_rss")) {
+        if (!(props["component_monitor::component_monitor::mem_rss"] >>= s.mem_rss)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::mem_percent")) {
+        if (!(props["component_monitor::component_monitor::mem_percent"] >>= s.mem_percent)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::num_processes")) {
+        if (!(props["component_monitor::component_monitor::num_processes"] >>= s.num_processes)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::num_threads")) {
+        if (!(props["component_monitor::component_monitor::num_threads"] >>= s.num_threads)) return false;
+    }
+    if (props.contains("component_monitor::component_monitor::num_files")) {
+        if (!(props["component_monitor::component_monitor::num_files"] >>= s.num_files)) return false;
+    }
+    return true;
+}
+
+inline void operator<<= (CORBA::Any& a, const component_monitor_struct& s) {
+    redhawk::PropertyMap props;
+ 
+    props["component_monitor::component_monitor::component_id"] = s.component_id;
+ 
+    props["component_monitor::component_monitor::waveform_id"] = s.waveform_id;
+ 
+    props["component_monitor::component_monitor::pid"] = s.pid;
+ 
+    props["component_monitor::component_monitor::cores"] = s.cores;
+ 
+    props["component_monitor::component_monitor::mem_rss"] = s.mem_rss;
+ 
+    props["component_monitor::component_monitor::mem_percent"] = s.mem_percent;
+ 
+    props["component_monitor::component_monitor::num_processes"] = s.num_processes;
+ 
+    props["component_monitor::component_monitor::num_threads"] = s.num_threads;
+ 
+    props["component_monitor::component_monitor::num_files"] = s.num_files;
+    a <<= props;
+}
+
+inline bool operator== (const component_monitor_struct& s1, const component_monitor_struct& s2) {
+    if (s1.component_id!=s2.component_id)
+        return false;
+    if (s1.waveform_id!=s2.waveform_id)
+        return false;
+    if (s1.pid!=s2.pid)
+        return false;
+    if (s1.cores!=s2.cores)
+        return false;
+    if (s1.mem_rss!=s2.mem_rss)
+        return false;
+    if (s1.mem_percent!=s2.mem_percent)
+        return false;
+    if (s1.num_processes!=s2.num_processes)
+        return false;
+    if (s1.num_threads!=s2.num_threads)
+        return false;
+    if (s1.num_files!=s2.num_files)
+        return false;
+    return true;
+}
+
+inline bool operator!= (const component_monitor_struct& s1, const component_monitor_struct& s2) {
+    return !(s1==s2);
+}
 
 #endif // STRUCTPROPS_H

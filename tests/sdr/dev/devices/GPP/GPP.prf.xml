@@ -229,6 +229,26 @@ THRESHOLD_NOT_EXCEEDED:  The measured value no longer exceeds the configured thr
         </simple>
         <configurationkind kindtype="property"/>
     </struct>
+    <structsequence id="component_monitor" mode="readonly">
+        <struct id="component_monitor::component_monitor" name="component_monitor">
+            <simple id="component_monitor::component_monitor::component_id" name="component_id" type="string"/>
+            <simple id="component_monitor::component_monitor::waveform_id" name="waveform_id" type="string"/>
+            <simple id="component_monitor::component_monitor::pid" name="pid" type="ushort"/>
+            <simple id="component_monitor::component_monitor::cores" name="cores" type="float">
+                <units>%</units>
+            </simple>
+            <simple id="component_monitor::component_monitor::mem_rss" name="mem_rss" type="float">
+                <units>MB</units>
+            </simple>
+            <simple id="component_monitor::component_monitor::mem_percent" name="mem_percent" type="float">
+                <units>%</units>
+            </simple>
+            <simple id="component_monitor::component_monitor::num_processes" name="num_processes" type="ulong"/>
+            <simple id="component_monitor::component_monitor::num_threads" name="num_threads" type="ulong"/>
+            <simple id="component_monitor::component_monitor::num_files" name="num_files" type="ulong"/>
+        </struct>
+        <configurationkind kindtype="property"/>
+    </structsequence>
     <struct id="affinity" mode="readwrite">
         <simple name="exec_directive_value" type="string" commandline="false" complex="false" mode="readwrite" optional="false" id="affinity::exec_directive_value">
             <description>The context specification for the exec_directive_class.   See numa library manpage for socket(numa node) and cpu list specifications.  For cgroup/cpuset option then a pre-existing cgroup name is required.</description>
