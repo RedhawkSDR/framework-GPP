@@ -301,7 +301,7 @@ class ComponentTests(ossie.utils.testing.ScaComponentTestCase):
         self.assertEquals(component_monitor[0].component_id, comp_id)
         self.assertEquals(component_monitor[0].waveform_id, comp_id)
         self.assertEquals(component_monitor[0].num_processes, 1)
-        self.assertEquals(component_monitor[0].num_threads, 5)
+        self.assertTrue(component_monitor[0].num_threads >= 4)
         
         try:
             os.kill(pid, 0)
@@ -871,10 +871,16 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
 
         # Launch the nodebooter.
         self._domainBooter = spawnNodeBooter(dmdFile=dmdFile, domainname = domain_name, *args, **kwargs)
+        number_attempts = 0
         while self._domainBooter.poll() == None:
-            self.dom = redhawk.attach(domain_name)
-            if self.dom == None:
+            try:
+                self.dom = redhawk.attach(domain_name)
+            except:
+                number_attempts += 1
+                if number_attempts >= 20:
+                    raise
                 time.sleep(0.1)
+                continue
             self._domainManager = self.dom.ref
             if self._domainManager:
                 try:
@@ -1031,7 +1037,7 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         self._domainBooter, domMgr = self.launchDomainManager(domain_name='REDHAWK_TEST_'+str(os.getpid()))
         self._deviceBooter, devMgr = self.launchDeviceManager("sdr/dev/nodes/DevMgr_sample/DeviceManager.dcd.xml", domainManager=self.dom.ref)
         app_1=self.dom.createApplication('/waveforms/load_comp_w/load_comp_w.sad.xml','load_comp_w',[])
-        wait_amount = (self.dom.devMgrs[0].devs[0].threshold_cycle_time / 1000.0) * 4
+        wait_amount = (self.dom.devMgrs[0].devs[0].threshold_cycle_time / 1000.0) * 6
         time.sleep(wait_amount)
         component_monitor = self.dom.devMgrs[0].devs[0].component_monitor[0]
         self.assertNotEqual(len(component_monitor), 0)
