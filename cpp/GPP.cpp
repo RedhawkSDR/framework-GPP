@@ -617,6 +617,7 @@ std::vector<component_monitor_struct> GPP_i::get_component_monitor() {
                             tmp.num_files++;
                         }
                     }
+                    closedir (dirp);
                 }
             }
 
