@@ -32,6 +32,7 @@ from omniORB import any
 from ossie.cf import ExtendedEvent
 from ossie.parsers import DCDParser
 from omniORB import CORBA
+import omniORB
 import CosEventChannelAdmin, CosEventChannelAdmin__POA
 from ossie.utils.sandbox.registrar import ApplicationRegistrarStub
 import subprocess, multiprocessing
@@ -1055,6 +1056,17 @@ class ComponentTests_SystemReservations(ossie.utils.testing.ScaComponentTestCase
         self.assertEquals(component_monitor.num_processes, 2)
         self.assertTrue(component_monitor.cores > 0.75)
         self.assertTrue(component_monitor.cores < 1.75)
+
+    def testDeadlock(self):
+        self._domainBooter, domMgr = self.launchDomainManager(domain_name='REDHAWK_TEST_'+str(os.getpid()))
+        self._deviceBooter, devMgr = self.launchDeviceManager("sdr/dev/nodes/DevMgr_sample/DeviceManager.dcd.xml", domainManager=self.dom.ref)
+        self.dom.devMgrs[0].devs[0].threshold_cycle_time = 50
+        count = 0
+        while count < 20:
+            app_1=self.dom.createApplication('/waveforms/empty_comp_w/empty_comp_w.sad.xml','empty_comp_w',[])
+            app_1.releaseObject()
+            time.sleep(0.1)
+            count += 1
     
     def testSystemReservation(self):
         copyfile(self.orig_sdrroot+'/dom/mgr/DomainManager', 'sdr/dom/mgr/DomainManager')

@@ -513,7 +513,6 @@ void GPP_i::postConstruction (std::string &profile,
 }
 
 void GPP_i::update_grp_child_pids() {
-    boost::recursive_mutex::scoped_lock lock(load_execute_lock);
     glob_t globbuf;
     std::vector<int> pids_now;
     glob("/proc/[0-9]*", GLOB_NOSORT, NULL, &globbuf);
@@ -2130,7 +2129,7 @@ void GPP_i::update()
   int64_t usage=0;
 
   {
-    ReadLock rlock(pidLock);
+    WriteLock rlock(pidLock);
     
     this->update_grp_child_pids();
     
