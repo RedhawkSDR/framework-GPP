@@ -27,10 +27,11 @@ dist_xml_DATA = ../GPP.scd.xml ../GPP.prf.xml ../GPP.spd.xml
 ACLOCAL_AMFLAGS = -I m4 -I${OSSIEHOME}/share/aclocal/ossie
 
 all-local: GPP
-	cp GPP ../tests/sdr/dev/devices/GPP/cpp
-	cp ../GPP.scd.xml ../tests/sdr/dev/devices/GPP
-	cp ../GPP.spd.xml ../tests/sdr/dev/devices/GPP
-	cp ../GPP.prf.xml ../tests/sdr/dev/devices/GPP
+	mkdir -p ../tests/sdr/dev/devices/GPP/cpp
+	cp GPP ../tests/sdr/dev/devices/GPP/cpp/
+	cp ../GPP.scd.xml ../tests/sdr/dev/devices/GPP/
+	cp ../GPP.spd.xml ../tests/sdr/dev/devices/GPP/
+	cp ../GPP.prf.xml ../tests/sdr/dev/devices/GPP/
 	./devconfig.py --location=../tests/sdr/dev/devices/GPP
 
 distclean-local:
