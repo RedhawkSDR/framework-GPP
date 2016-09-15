@@ -50,6 +50,7 @@ int main(int argc, char* argv[])
   }
 
   struct sigaction sa;
+  sigemptyset(&sa.sa_mask);
   sa.sa_handler = signal_catcher;
   sa.sa_flags = 0;
   devicePtr = 0;

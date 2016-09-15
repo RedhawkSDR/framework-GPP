@@ -521,6 +521,8 @@ void GPP_i::update_grp_child_pids() {
         std::string proc_id(stat_filename.substr(stat_filename.rfind("/")+1));
         pids_now.push_back(boost::lexical_cast<int>(proc_id));
     }
+    globfree(&globbuf);
+
     BOOST_FOREACH(const int &_pid, pids_now) {
         if (parsed_stat.find(_pid) == parsed_stat.end()) { // it is not on the map
             std::stringstream stat_filename;
